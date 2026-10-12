@@ -1,0 +1,63 @@
+repos:
+  # ============================================================================
+  # GENERAL CODE QUALITY & FORMATTING
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=102400"]
+      - id: check-yaml
+        args: ["--unsafe", "--allow-multiple-documents"]
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "master"]
+        stages: [pre-commit]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        verbose: true
+        args: ["--ignore-words-list=ehr,ser"]
+
+  # ============================================================================
+  # CONTAINER & SHELL LINTING
+  # ============================================================================
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        files: 'Dockerfile'
+        args: ["--config", ".hadolint.yaml"]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: '^hooks/.*\.sh$'
+        args: ["-e", "SC1091"]
+
+  # ============================================================================
+  # AWS LABS DEVSECOPS SECURITY SCANNING
+  # ============================================================================
+  - repo: https://github.com/awslabs/ferret-scan
+    rev: v2.3.2
+    hooks:
+      - id: ferret-scan
+        name: Ferret Scan Security Check
+        args:
+          [
+            "--pre-commit-mode",
+            "--confidence",
+            "medium,high",
+            "--checks",
+            "SECRETS",
+            "--config",
+            ".devsecops/ferret-scan.yaml",
+          ]
+        files: '\.(json|md|py|sh|txt|yaml|yml)$'
+        exclude: '(^\.git/|\.ash/|\.devsecops/|dist/)'
+        pass_filenames: true
