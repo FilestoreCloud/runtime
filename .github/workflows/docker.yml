@@ -53,6 +53,7 @@ jobs:
           test -f Dockerfile || { echo "❌ Missing Dockerfile"; exit 1; }
           test -f config/ai.config.php || { echo "❌ Missing config/ai.config.php"; exit 1; }
           test -f config/nextcloud.config.php || { echo "❌ Missing config/nextcloud.config.php"; exit 1; }
+          test -f config/opcache.ini || { echo "❌ Missing config/opcache.ini"; exit 1; }
           test -f hooks/01-setup-ai.sh || { echo "❌ Missing hooks/01-setup-ai.sh"; exit 1; }
           chmod +x hooks/01-setup-ai.sh
           echo "✅ All Docker assets and entrypoint hooks verified."

@@ -41,17 +41,18 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
         su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant enabled --value=yes" || true
         su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant zero_data_retention --value=1" || true
 
-        # Configure LiteLLM Bedrock Bridge
-        LITELLM_ENDPOINT="${LITELLM_API_URL:-http://127.0.0.1:4000/v1}"
-        LITELLM_KEY="${LITELLM_API_KEY:-sk-saas-nextcloud-internal}"
-        BEDROCK_MODEL="${BEDROCK_DEFAULT_MODEL:-bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0}"
-
-        echo "[ENTRYPOINT-HOOK] Binding AI Provider to LiteLLM Bedrock Bridge at ${LITELLM_ENDPOINT}..."
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${LITELLM_ENDPOINT}'" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${LITELLM_KEY}'" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai default_model --value='${BEDROCK_MODEL}'" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1" || true
+        # Configure External AI Provider if explicitly configured via environment
+        AI_ENDPOINT="${AI_API_URL:-${OPENAI_API_URL:-}}"
+        if [ -n "${AI_ENDPOINT}" ]; then
+            AI_KEY="${AI_API_KEY:-${OPENAI_API_KEY:-}}"
+            echo "[ENTRYPOINT-HOOK] Binding AI Provider to ${AI_ENDPOINT}..."
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${AI_ENDPOINT}'" || true
+            if [ -n "${AI_KEY}" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${AI_KEY}'" || true
+            fi
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1" || true
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1" || true
+        fi
 
         # Optional Redis Distributed Locking (if REDIS_HOST configured)
         if [ -n "${REDIS_HOST}" ]; then
