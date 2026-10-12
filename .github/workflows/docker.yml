@@ -1,0 +1,145 @@
+name: Build & Push Runtime Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Custom Docker Image Tag (leave empty for git SHA and latest)'
+        required: false
+        default: ''
+        type: string
+      repository_name:
+        description: 'Amazon ECR Repository Name'
+        required: true
+        default: 'filestore-runtime'
+        type: string
+      push_to_ecr:
+        description: 'Push to Amazon ECR (false for dry-run build)'
+        required: true
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write   # Required for AWS OIDC authentication
+  contents: read    # Required for repository checkout
+
+concurrency:
+  group: runtime-ecr-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  lint-and-validate:
+    name: Lint & Validate Docker Assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+      - name: Verify Docker Assets & Hooks
+        run: |
+          echo "Verifying Docker configuration files and entrypoint hooks..."
+          test -f Dockerfile || { echo "❌ Missing Dockerfile"; exit 1; }
+          test -f config/ai.config.php || { echo "❌ Missing config/ai.config.php"; exit 1; }
+          test -f config/nextcloud.config.php || { echo "❌ Missing config/nextcloud.config.php"; exit 1; }
+          test -f hooks/01-setup-ai.sh || { echo "❌ Missing hooks/01-setup-ai.sh"; exit 1; }
+          chmod +x hooks/01-setup-ai.sh
+          echo "✅ All Docker assets and entrypoint hooks verified."
+
+  build-and-push:
+    name: Build & Push Image to ECR
+    needs: [lint-and-validate]
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+      ECR_REPOSITORY: ${{ inputs.repository_name || 'filestore-runtime' }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN || 'arn:aws:iam::649519997247:role/nextcloud-github-actions-deploy-role' }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Verify AWS Identity
+        run: |
+          echo "Connected to AWS Account via OIDC:"
+          aws sts get-caller-identity
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR Repository Exists
+        run: |
+          echo "Ensuring ECR repository '${{ env.ECR_REPOSITORY }}' exists..."
+          aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
+            aws ecr create-repository \
+              --repository-name "${{ env.ECR_REPOSITORY }}" \
+              --region "${{ env.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Environment,Value=prod Key=ManagedBy,Value=GitHub-Actions
+          echo "✅ ECR repository ready: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+
+      - name: Determine Docker Image Tags
+        id: meta
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          REPO="${{ env.ECR_REPOSITORY }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TAGS="${REGISTRY}/${REPO}:${SHORT_SHA}"
+
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            TAGS="${TAGS},${REGISTRY}/${REPO}:${{ inputs.image_tag }}"
+          fi
+
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS="${TAGS},${REGISTRY}/${REPO}:${{ github.ref_name }}"
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            TAGS="${TAGS},${REGISTRY}/${REPO}:latest,${REGISTRY}/${REPO}:prod"
+          elif [ "${{ github.ref_name }}" = "dev" ]; then
+            TAGS="${TAGS},${REGISTRY}/${REPO}:dev"
+          fi
+
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "primary_tag=${REGISTRY}/${REPO}:${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "Target tags: ${TAGS}"
+
+      - name: Build and Push Docker Image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push_to_ecr }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deployment Summary & Verification
+        run: |
+          echo "============================================================"
+          echo "🎉 Docker Golden Image successfully built and pushed to ECR!"
+          echo "Registry    : ${{ steps.login-ecr.outputs.registry }}"
+          echo "Repository  : ${{ env.ECR_REPOSITORY }}"
+          echo "Image Digest: ${{ steps.build-push.outputs.digest }}"
+          echo "Primary Tag : ${{ steps.meta.outputs.primary_tag }}"
+          echo "============================================================"
