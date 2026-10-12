@@ -53,9 +53,10 @@ if ($s3Bucket) {
         'class' => '\\OC\\Files\\ObjectStore\\S3',
         'arguments' => [
             'bucket' => $s3Bucket,
-            'autocreate' => false,
-            'region' => getenv('AWS_REGION') ?: 'ap-southeast-1',
-            'use_ssl' => true,
+            'autocreate' => (getenv('OBJECTSTORE_S3_AUTOCREATE') === 'true'),
+            'region' => getenv('OBJECTSTORE_S3_REGION') ?: (getenv('AWS_REGION') ?: 'ap-southeast-1'),
+            'use_ssl' => (getenv('OBJECTSTORE_S3_SSL') !== 'false'),
+            'use_path_style' => (getenv('OBJECTSTORE_S3_USEPATH_STYLE') === 'true'),
         ],
     ];
 }
