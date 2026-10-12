@@ -74,7 +74,7 @@ jobs:
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN || 'arn:aws:iam::649519997247:role/nextcloud-github-actions-deploy-role' }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
@@ -143,3 +143,16 @@ jobs:
           echo "Image Digest: ${{ steps.build-push.outputs.digest }}"
           echo "Primary Tag : ${{ steps.meta.outputs.primary_tag }}"
           echo "============================================================"
+
+      - name: Trigger GitOps Rollout in infra
+        if: startsWith(github.ref, 'refs/tags/v') && env.GITOPS_TOKEN != ''
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          echo "Dispatching release event to FilestoreCloud/infra..."
+          curl -s -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${GITOPS_TOKEN}" \
+            https://api.github.com/repos/FilestoreCloud/infra/dispatches \
+            -d "{\"event_type\": \"runtime_release\", \"client_payload\": {\"tag\": \"${{ github.ref_name }}\", \"image\": \"${{ steps.meta.outputs.primary_tag }}\"}}"
+          echo "✅ Release event dispatched to FilestoreCloud/infra."
