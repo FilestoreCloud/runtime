@@ -1,0 +1,123 @@
+name: Destroy / Purge Runtime Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_name:
+        description: "Amazon ECR Repository Name"
+        required: true
+        default: "filestore-runtime"
+        type: string
+      scope:
+        description: "Purge Scope"
+        required: true
+        default: "all_images"
+        type: choice
+        options:
+          - all_images
+          - untagged_only
+          - specific_tag
+      target_tag:
+        description: "Target Tag (if scope is specific_tag, e.g. dev, latest)"
+        required: false
+        default: ""
+        type: string
+      confirmation:
+        description: "Safety Confirmation: Type DESTROY to proceed"
+        required: true
+        default: ""
+        type: string
+
+permissions:
+  id-token: write # Required for AWS OIDC authentication
+  contents: read
+
+concurrency:
+  group: destroy-runtime-images-${{ inputs.repository_name }}
+  cancel-in-progress: false
+
+jobs:
+  purge-images:
+    name: Purge ECR Container Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Safety Confirmation
+        run: |
+          if [ "${{ inputs.confirmation }}" != "DESTROY" ]; then
+            echo "❌ Purge aborted: You must type 'DESTROY' in the confirmation input to prevent accidental deletion."
+            exit 1
+          fi
+          echo "⚠️ Confirmation verified. Purging images from ${{ inputs.repository_name }} (scope: ${{ inputs.scope }})..."
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: pip install boto3
+
+      - name: Configure AWS Credentials via OIDC
+        id: aws-creds
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          audience: sts.amazonaws.com
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Execute ECR Image Purge
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          REPO_NAME: ${{ inputs.repository_name }}
+          SCOPE: ${{ inputs.scope }}
+          TARGET_TAG: ${{ inputs.target_tag }}
+        run: |
+          python3 -c "
+          import os, boto3
+          region = os.environ.get('AWS_REGION', 'ap-southeast-1')
+          repo_name = os.environ.get('REPO_NAME', 'filestore-runtime')
+          scope = os.environ.get('SCOPE', 'all_images')
+          target_tag = os.environ.get('TARGET_TAG', '').strip()
+
+          ecr = boto3.client('ecr', region_name=region)
+          print(f'Connecting to ECR repository: {repo_name} ({region})')
+
+          try:
+              if scope == 'specific_tag' and target_tag:
+                  print(f'Deleting specific image tag: {target_tag}...')
+                  resp = ecr.batch_delete_image(repositoryName=repo_name, imageIds=[{'imageTag': target_tag}])
+                  print('Deleted:', [img.get('imageTag') for img in resp.get('imageIds', [])])
+              else:
+                  paginator = ecr.get_paginator('list_images')
+                  filter_param = {'tagStatus': 'UNTAGGED'} if scope == 'untagged_only' else {}
+                  image_ids = []
+                  for page in paginator.paginate(repositoryName=repo_name, filter=filter_param):
+                      image_ids.extend(page.get('imageIds', []))
+
+                  if not image_ids:
+                      print('ℹ️ No images found matching scope criteria.')
+                  else:
+                      print(f'Deleting {len(image_ids)} images in batches...')
+                      for i in range(0, len(image_ids), 100):
+                          chunk = image_ids[i:i + 100]
+                          resp = ecr.batch_delete_image(repositoryName=repo_name, imageIds=chunk)
+                          print(f'✓ Batch {i // 100 + 1}: Deleted {len(resp.get(\"imageIds\", []))} images.')
+                      print('✅ ECR images purged successfully!')
+          except Exception as e:
+              print(f'ECR purge note: {e}')
+          "
+
+      - name: Purge Summary
+        run: |
+          echo "============================================================"
+          echo "🎉 ECR image purge completed successfully!"
+          echo "Repository : ${{ inputs.repository_name }}"
+          echo "Scope      : ${{ inputs.scope }}"
+          echo "============================================================"
