@@ -20,6 +20,7 @@ chown -R www-data:www-data /var/www/html/data 2>/dev/null || true
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
 # ──────────────────────────────────────────────────────────────────────────
+mkdir -p /var/www/html/config
 if [ -d /usr/src/nextcloud/config ]; then
     for cfg in /usr/src/nextcloud/config/*.config.php; do
         if [ -f "$cfg" ]; then
@@ -31,6 +32,61 @@ if [ -d /usr/src/nextcloud/config ]; then
             fi
         fi
     done
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# 0.1 AUTO-HEAL CONFIG.PHP IF DATABASE ALREADY INITIALIZED
+# ──────────────────────────────────────────────────────────────────────────
+if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
+    DB_STATUS=$(php -r '
+        $host = getenv("POSTGRES_HOST");
+        $db = getenv("POSTGRES_DB") ?: "nextcloud";
+        $user = getenv("POSTGRES_USER") ?: "nextcloud";
+        $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        try {
+            $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
+            if ($stmt && $stmt->fetch()) {
+                echo "INITIALIZED";
+            } else {
+                echo "EMPTY";
+            }
+        } catch (Exception $e) {
+            echo "ERROR: " . $e->getMessage();
+        }
+    ' 2>/dev/null || echo "UNKNOWN")
+
+    if [ "$DB_STATUS" = "INITIALIZED" ]; then
+        echo "[ENTRYPOINT-HOOK] Database is already initialized. Generating config.php to prevent maintenance:install loop..."
+        INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "defaultinst")"
+        SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "defaultsecret")"
+        cat <<EOF > /var/www/html/config/config.php
+<?php
+\$CONFIG = array (
+  'instanceid' => '${INSTANCE_ID}',
+  'passwordsalt' => 'salt_${INSTANCE_ID}',
+  'secret' => '${SECRET}',
+  'trusted_domains' => array (
+    0 => 'localhost',
+    1 => '127.0.0.1',
+    2 => '*',
+  ),
+  'datadirectory' => '/var/www/html/data',
+  'dbtype' => 'pgsql',
+  'version' => '30.0.17.2',
+  'overwrite.cli.url' => 'http://localhost',
+  'dbname' => '${POSTGRES_DB:-nextcloud}',
+  'dbhost' => '${POSTGRES_HOST}',
+  'dbport' => '',
+  'dbtableprefix' => 'oc_',
+  'dbuser' => '${POSTGRES_USER:-nextcloud}',
+  'dbpassword' => '${POSTGRES_PASSWORD:-}',
+  'installed' => true,
+);
+EOF
+        chown -R www-data:www-data /var/www/html/config
+        echo "[ENTRYPOINT-HOOK] config.php successfully generated and marked installed."
+    fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
