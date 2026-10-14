@@ -40,48 +40,20 @@ fi
 log_success "Staged files hygiene scan passed."
 
 # ------------------------------------------------------------------------------
-# 3. Code Quality & DevSecOps Linters
+# 3. Code Quality & DevSecOps Linters (Pre-Commit Enforcement)
 # ------------------------------------------------------------------------------
-if [ "${SKIP_PRE_COMMIT:-0}" = "1" ]; then
-  log_warn "pre-commit execution skipped by SKIP_PRE_COMMIT=1"
-  exit 0
-fi
-
-# Locate pre-commit binary
-PRE_COMMIT_BIN=""
-if command -v pre-commit >/dev/null 2>&1; then
-  PRE_COMMIT_BIN="pre-commit"
-elif [ -x "/opt/homebrew/bin/pre-commit" ]; then
-  PRE_COMMIT_BIN="/opt/homebrew/bin/pre-commit"
-elif [ -x "$HOME/.local/bin/pre-commit" ]; then
-  PRE_COMMIT_BIN="$HOME/.local/bin/pre-commit"
-fi
-
-if [ -n "$PRE_COMMIT_BIN" ] && [ -f ".pre-commit-config.yaml" ]; then
-  log_step "Running pre-commit hooks (.pre-commit-config.yaml)..."
-  if ! "$PRE_COMMIT_BIN" run --hook-stage pre-commit; then
-    log_error "pre-commit hooks reported issues. Please fix them before committing."
+log_step "Running code quality & automated test suite (./tests/run_tests.sh)..."
+if [ -f "./tests/run_tests.sh" ]; then
+  chmod +x ./tests/run_tests.sh
+  if ! ./tests/run_tests.sh; then
+    log_error "Runtime test suite or quality checks failed! Commit blocked."
     exit 1
   fi
-  log_success "All pre-commit hooks passed successfully."
+  log_success "All runtime automated tests passed."
 else
-  log_warn "pre-commit binary not found. Running basic local syntax checks..."
-
-  # Basic Python syntax verification on staged python files
-  STAGED_PY=$(get_staged_files | grep -E '\.py$' || true)
-  if [ -n "$STAGED_PY" ]; then
-    log_step "Verifying Python syntax..."
-    for py_file in $STAGED_PY; do
-      if [ -f "$py_file" ]; then
-        if ! python3 -m py_compile "$py_file" 2>/dev/null; then
-          log_error "Python syntax error in: $py_file"
-          exit 1
-        fi
-      fi
-    done
-    log_success "Python syntax validation passed."
-  fi
-  log_info "Tip: Install pre-commit (brew install pre-commit or pip install pre-commit) for full DevSecOps checks."
+  log_error "Test runner ./tests/run_tests.sh not found."
+  exit 1
 fi
 
+log_success "All local code quality standards verified successfully. Proceeding with commit."
 exit 0
