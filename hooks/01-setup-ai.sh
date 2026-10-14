@@ -35,18 +35,14 @@ if [ -d /usr/src/nextcloud/config ]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# 0.1 AUTO-HEAL CONFIG.PHP IF DATABASE ALREADY INITIALIZED
+# 0.1 AUTO-PROVISION CONFIG.PHP IF NOT PRESENT
 # ──────────────────────────────────────────────────────────────────────────
-if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /var/www/html/config/config.php 2>/dev/null; then
-    # In Nextcloud, maintenance:install is strictly registered ONLY when NOT installed.
-    # If maintenance:install is absent from occ, Nextcloud recognizes the database as already initialized.
-    if ! su -s /bin/sh www-data -c "php /var/www/html/occ list" 2>/dev/null | grep -q "maintenance:install"; then
-        echo "[ENTRYPOINT-HOOK] Detected existing database installation (maintenance:install is absent from occ)."
-        echo "[ENTRYPOINT-HOOK] Generating /var/www/html/config/config.php to prevent installation retry loop..."
-        mkdir -p /var/www/html/config
-        INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
-        SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
-        cat <<EOF > /var/www/html/config/config.php
+if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
+    echo "[ENTRYPOINT-HOOK] Initializing /var/www/html/config/config.php with PostgreSQL bindings..."
+    mkdir -p /var/www/html/config
+    INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
+    SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
+    cat <<EOF > /var/www/html/config/config.php
 <?php
 \$CONFIG = array (
   'instanceid' => '${INSTANCE_ID}',
@@ -70,9 +66,8 @@ if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /
   'installed' => true,
 );
 EOF
-        chown -R www-data:www-data /var/www/html/config
-        echo "[ENTRYPOINT-HOOK] config.php successfully generated and marked installed."
-    fi
+    chown -R www-data:www-data /var/www/html/config
+    echo "[ENTRYPOINT-HOOK] config.php successfully provisioned with installed=true."
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
