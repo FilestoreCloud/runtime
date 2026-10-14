@@ -149,7 +149,7 @@ jobs:
           echo "============================================================"
 
       - name: Trigger GitOps Rollout in infra
-        if: startsWith(github.ref, 'refs/tags/v') && env.GITOPS_TOKEN != ''
+        if: (startsWith(github.ref, 'refs/tags/v') || github.ref_name == 'dev' || github.event_name == 'workflow_dispatch') && env.GITOPS_TOKEN != ''
         env:
           GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
           ORG_NAME: ${{ github.repository_owner }}
