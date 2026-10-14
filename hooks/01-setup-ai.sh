@@ -37,29 +37,15 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # 0.1 AUTO-HEAL CONFIG.PHP IF DATABASE ALREADY INITIALIZED
 # ──────────────────────────────────────────────────────────────────────────
-if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
-    DB_STATUS=$(php -r '
-        $host = getenv("POSTGRES_HOST");
-        $db = getenv("POSTGRES_DB") ?: "nextcloud";
-        $user = getenv("POSTGRES_USER") ?: "nextcloud";
-        $pass = getenv("POSTGRES_PASSWORD") ?: "";
-        try {
-            $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
-            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
-            if ($stmt && $stmt->fetch()) {
-                echo "INITIALIZED";
-            } else {
-                echo "EMPTY";
-            }
-        } catch (Exception $e) {
-            echo "ERROR: " . $e->getMessage();
-        }
-    ' 2>/dev/null || echo "UNKNOWN")
-
-    if [ "$DB_STATUS" = "INITIALIZED" ]; then
-        echo "[ENTRYPOINT-HOOK] Database is already initialized. Generating config.php to prevent maintenance:install loop..."
-        INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "defaultinst")"
-        SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "defaultsecret")"
+if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /var/www/html/config/config.php 2>/dev/null; then
+    # In Nextcloud, maintenance:install is strictly registered ONLY when NOT installed.
+    # If maintenance:install is absent from occ, Nextcloud recognizes the database as already initialized.
+    if ! su -s /bin/sh www-data -c "php /var/www/html/occ list" 2>/dev/null | grep -q "maintenance:install"; then
+        echo "[ENTRYPOINT-HOOK] Detected existing database installation (maintenance:install is absent from occ)."
+        echo "[ENTRYPOINT-HOOK] Generating /var/www/html/config/config.php to prevent installation retry loop..."
+        mkdir -p /var/www/html/config
+        INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
+        SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
         cat <<EOF > /var/www/html/config/config.php
 <?php
 \$CONFIG = array (
