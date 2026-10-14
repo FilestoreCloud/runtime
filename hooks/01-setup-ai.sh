@@ -9,6 +9,15 @@ set -e
 echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and configuration..."
 
 # ──────────────────────────────────────────────────────────────────────────
+# 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
+# ──────────────────────────────────────────────────────────────────────────
+mkdir -p /var/www/html/data
+if [ ! -f /var/www/html/data/.ncdata ]; then
+    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata
+fi
+chown -R www-data:www-data /var/www/html/data 2>/dev/null || true
+
+# ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
 # ──────────────────────────────────────────────────────────────────────────
 if [ -d /usr/src/nextcloud/config ]; then
