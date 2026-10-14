@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-runtime:
-    name: Lint, Validate & Test Runtime Container
+  lint-dockerfile:
+    name: Lint Dockerfile (Hadolint)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -28,21 +28,43 @@ jobs:
           dockerfile: Dockerfile
           config: .hadolint.yaml
 
+  unit-tests:
+    name: Unit Tests & Asset Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Run Automated Test Suite
         run: |
           chmod +x tests/run_tests.sh
           ./tests/run_tests.sh
 
+  docker-build-and-scan:
+    name: Build & Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Verify Docker Build (Dry Run)
-        run: |
-          echo "Verifying local Docker build succeeds..."
-          docker build -t filestore-runtime:ci-test .
-          echo "✅ Docker build succeeded."
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: filestore-runtime:ci-test
+          cache-from: type=gha
 
       - name: Run Trivy Security Vulnerability Scan
         uses: aquasecurity/trivy-action@master
