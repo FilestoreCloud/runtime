@@ -1,0 +1,45 @@
+name: Automated Test & CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: runtime-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-runtime:
+    name: Lint, Validate & Test Runtime Container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: .hadolint.yaml
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Automated Test Suite
+        run: |
+          chmod +x tests/run_tests.sh
+          ./tests/run_tests.sh
+
+      - name: Verify Docker Build (Dry Run)
+        run: |
+          echo "Verifying local Docker build succeeds..."
+          docker build -t filestore-runtime:ci-test .
+          echo "✅ Docker build succeeded."

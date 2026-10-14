@@ -46,6 +46,9 @@ Production-hardened Golden Container Image providing the Nextcloud 30 enterprise
 ### Testing & Verification
 
 ```bash
+# Run automated test suite (linting, configuration validation, hook simulation)
+./tests/run_tests.sh
+
 # Lint Dockerfile
 hadolint Dockerfile --config .hadolint.yaml
 
@@ -89,6 +92,7 @@ docker run -d -p 8080:80 \
 Before concluding any implementation or opening a PR:
 
 1. [ ] **Pre-commit:** `pre-commit run --all-files` passes cleanly with zero errors.
-2. [ ] **Dockerfile:** `hadolint Dockerfile --config .hadolint.yaml` passes cleanly.
-3. [ ] **Build:** Local `docker build` succeeds without warnings.
-4. [ ] **Git:** Staged changes committed to `dev` with Conventional Commit message.
+2. [ ] **Tests:** `./tests/run_tests.sh` passes cleanly with all tests green.
+3. [ ] **Dockerfile:** `hadolint Dockerfile --config .hadolint.yaml` passes cleanly.
+4. [ ] **Build:** Local `docker build` succeeds without warnings.
+5. [ ] **Git:** Staged changes committed to `dev` with Conventional Commit message.
