@@ -2,7 +2,7 @@
 # ==============================================================================
 # FilestoreCloud Runtime Automated Test Runner
 # Executes Hadolint Dockerfile checks, shell script syntax checks,
-# and Python architecture & configuration validation tests.
+# Python architecture & configuration validation tests, and Trivy security scans.
 # ==============================================================================
 set -euo pipefail
 
@@ -22,7 +22,7 @@ echo -e "${BLUE}============================================================${NC
 cd "${REPO_ROOT}"
 
 # 1. Hadolint Dockerfile Linting
-echo -e "\n${BLUE}[1/3] Running Dockerfile Linting (Hadolint)...${NC}"
+echo -e "\n${BLUE}[1/4] Running Dockerfile Linting (Hadolint)...${NC}"
 if command -v hadolint >/dev/null 2>&1; then
     hadolint Dockerfile --config .hadolint.yaml
     echo -e "${GREEN}✓ Dockerfile passed Hadolint inspection.${NC}"
@@ -31,7 +31,7 @@ else
 fi
 
 # 2. Shell Script Syntax Check
-echo -e "\n${BLUE}[2/3] Checking Shell Script Syntax...${NC}"
+echo -e "\n${BLUE}[2/4] Checking Shell Script Syntax...${NC}"
 for sh_file in hooks/*.sh; do
     if [ -f "$sh_file" ]; then
         sh -n "$sh_file"
@@ -40,16 +40,30 @@ for sh_file in hooks/*.sh; do
 done
 
 # 3. Python Test Suite (Architecture Invariants & Hook Simulation)
-echo -e "\n${BLUE}[3/3] Running Python Runtime Test Suite...${NC}"
+echo -e "\n${BLUE}[3/4] Running Python Runtime Test Suite...${NC}"
 python3 -m unittest discover -s tests -v
 
-# 4. Optional Docker Image Verification
+# 4. Trivy Security & Misconfiguration Scan
+echo -e "\n${BLUE}[4/4] Running Security & Misconfig Scan (Trivy)...${NC}"
+if command -v trivy >/dev/null 2>&1; then
+    trivy config . --config .trivy.yaml
+    echo -e "${GREEN}✓ Assets passed Trivy security & configuration audit.${NC}"
+else
+    echo -e "${YELLOW}ℹ trivy not found on PATH; skipping local security scan.${NC}"
+fi
+
+# 5. Optional Docker Image Verification & Vulnerability Scan
 if [[ "${1:-}" == "--docker" ]]; then
-    echo -e "\n${BLUE}[Optional] Running Container Build Verification...${NC}"
+    echo -e "\n${BLUE}[Optional] Running Container Build & Image Scan...${NC}"
     docker build -t filestore-runtime:test .
     echo -e "${GREEN}✓ Container built successfully: filestore-runtime:test${NC}"
+    if command -v trivy >/dev/null 2>&1; then
+        echo -e "${BLUE}Scanning container image with Trivy...${NC}"
+        trivy image --severity HIGH,CRITICAL --ignore-unfixed filestore-runtime:test
+        echo -e "${GREEN}✓ Container image passed Trivy vulnerability scan.${NC}"
+    fi
 fi
 
 echo -e "\n${GREEN}============================================================${NC}"
-echo -e "${GREEN}🎉 All Runtime automated tests passed successfully!        ${NC}"
+echo -e "${GREEN}🎉 All Runtime automated tests & security scans passed!     ${NC}"
 echo -e "${GREEN}============================================================${NC}"

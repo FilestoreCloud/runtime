@@ -1,0 +1,13 @@
+# Trivy Scanner Configuration for FilestoreCloud Runtime
+scan:
+  scanners:
+    - misconfig
+    - secret
+  skip-version-check: true
+
+severity:
+  - HIGH
+  - CRITICAL
+
+format: table
+ignorefile: .trivyignore

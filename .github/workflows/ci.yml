@@ -43,3 +43,12 @@ jobs:
           echo "Verifying local Docker build succeeds..."
           docker build -t filestore-runtime:ci-test .
           echo "✅ Docker build succeeded."
+
+      - name: Run Trivy Security Vulnerability Scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: 'filestore-runtime:ci-test'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'

@@ -1,0 +1,4 @@
+# Trivy Ignore File for FilestoreCloud Runtime
+# Rationale: Nextcloud Apache base image requires root entrypoint execution
+# for runtime port binding, volume permissions, and hook execution before dropping to www-data.
+AVD-DS-0002

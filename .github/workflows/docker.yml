@@ -6,17 +6,14 @@ on:
       image_tag:
         description: 'Custom Docker Image Tag (leave empty for git SHA and latest)'
         required: false
-        default: ''
         type: string
       repository_name:
         description: 'Amazon ECR Repository Name'
         required: true
-        default: 'filestore-runtime'
         type: string
       push_to_ecr:
         description: 'Push to Amazon ECR (false for dry-run build)'
         required: true
-        default: true
         type: boolean
   push:
     branches:
@@ -71,8 +68,8 @@ jobs:
     needs: [lint-and-validate]
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
-      ECR_REPOSITORY: ${{ inputs.repository_name || 'filestore-runtime' }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ inputs.repository_name }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -84,7 +81,7 @@ jobs:
         id: aws-creds
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME }}
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
@@ -146,11 +143,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') && env.GITOPS_TOKEN != ''
         env:
           GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+          ORG_NAME: ${{ github.repository_owner }}
         run: |
-          echo "Dispatching release event to FilestoreCloud/infra..."
+          echo "Dispatching release event to ${ORG_NAME}/infra..."
           curl -s -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${GITOPS_TOKEN}" \
-            https://api.github.com/repos/FilestoreCloud/infra/dispatches \
+            https://api.github.com/repos/${ORG_NAME}/infra/dispatches \
             -d "{\"event_type\": \"runtime_release\", \"client_payload\": {\"tag\": \"${{ github.ref_name }}\", \"image\": \"${{ steps.meta.outputs.primary_tag }}\"}}"
-          echo "✅ Release event dispatched to FilestoreCloud/infra."
+          echo "✅ Release event dispatched to ${ORG_NAME}/infra."

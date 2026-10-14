@@ -6,12 +6,10 @@ on:
       repository_name:
         description: "Amazon ECR Repository Name"
         required: true
-        default: "filestore-runtime"
         type: string
       scope:
         description: "Purge Scope"
         required: true
-        default: "all_images"
         type: choice
         options:
           - all_images
@@ -20,12 +18,10 @@ on:
       target_tag:
         description: "Target Tag (if scope is specific_tag, e.g. dev, latest)"
         required: false
-        default: ""
         type: string
       confirmation:
         description: "Safety Confirmation: Type DESTROY to proceed"
         required: true
-        default: ""
         type: string
 
 permissions:
@@ -64,8 +60,8 @@ jobs:
         id: aws-creds
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME }}
+          aws-region: ${{ vars.AWS_REGION }}
           audience: sts.amazonaws.com
 
       - name: Login to Amazon ECR
@@ -74,7 +70,7 @@ jobs:
 
       - name: Execute ECR Image Purge
         env:
-          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
           REPO_NAME: ${{ inputs.repository_name }}
           SCOPE: ${{ inputs.scope }}
           TARGET_TAG: ${{ inputs.target_tag }}
