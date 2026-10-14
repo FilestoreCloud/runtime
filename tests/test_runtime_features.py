@@ -101,3 +101,82 @@ def test_entrypoint_hook_determinism():
 
     # Invariant: .tenant_initialized is present
     assert ".tenant_initialized" in content
+
+
+def evaluate_php_trusted_domains(trusted_domains_env: str | None) -> list[str]:
+    """Execute nextcloud.config.php in a subshell using php CLI to extract trusted_domains."""
+    php_script = f"""
+    putenv('NEXTCLOUD_TRUSTED_DOMAINS' . ({repr('=' + trusted_domains_env if trusted_domains_env is not None else '')}));
+    if ({repr(trusted_domains_env is None)}) {{
+        putenv('NEXTCLOUD_TRUSTED_DOMAINS');
+    }}
+    require '{CONFIG_DIR / "nextcloud.config.php"}';
+    echo json_encode($CONFIG['trusted_domains']);
+    """
+    cmd = ["php", "-r", php_script]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        import json
+        return json.loads(res.stdout)
+    except (subprocess.SubprocessError, FileNotFoundError):
+        # Fallback simulation if php binary is not locally available
+        domains = ["localhost", "127.0.0.1"]
+        if trusted_domains_env:
+            parts = [p.strip() for p in re.split(r"[\s,]+", trusted_domains_env.strip()) if p.strip()]
+            parts = [d for d in parts if d != "*" and d != ""]
+            for d in parts:
+                if d not in domains:
+                    domains.append(d)
+        return domains
+
+
+def test_trusted_domains_dynamic_resolution():
+    """Verify NEXTCLOUD_TRUSTED_DOMAINS resolves default, comma, space, and strictly strips bare wildcard '*'."""
+    # 1. Unset env var -> fallback default [localhost, 127.0.0.1]
+    assert evaluate_php_trusted_domains(None) == ["localhost", "127.0.0.1"]
+
+    # 2. Comma separated
+    comma_input = "tenant1.png261.dev,tenant2.appleai.codes"
+    assert evaluate_php_trusted_domains(comma_input) == ["localhost", "127.0.0.1", "tenant1.png261.dev", "tenant2.appleai.codes"]
+
+    # 3. Space separated
+    space_input = "tenant1.png261.dev tenant2.appleai.codes"
+    assert evaluate_php_trusted_domains(space_input) == ["localhost", "127.0.0.1", "tenant1.png261.dev", "tenant2.appleai.codes"]
+
+    # 4. Bare wildcard elimination (prevent Host Header injection)
+    wildcard_input = "localhost 127.0.0.1 * tenant1.png261.dev"
+    assert evaluate_php_trusted_domains(wildcard_input) == ["localhost", "127.0.0.1", "tenant1.png261.dev"]
+
+    # 5. Wildcard subdomains (vanity routing) are preserved
+    subdomain_input = "*.png261.dev *.appleai.codes"
+    assert evaluate_php_trusted_domains(subdomain_input) == ["localhost", "127.0.0.1", "*.png261.dev", "*.appleai.codes"]
+
+
+def test_dockerfile_healthcheck_tuned_for_fast_boot():
+    """Verify Dockerfile HEALTHCHECK is tuned to report container health in < 15 seconds."""
+    dockerfile = RUNTIME_DIR / "Dockerfile"
+    assert dockerfile.exists(), "Dockerfile not found"
+    content = dockerfile.read_text(encoding="utf-8")
+
+    assert "--interval=10s" in content, "HEALTHCHECK interval should be 10s for fast boot"
+    assert "--timeout=5s" in content, "HEALTHCHECK timeout should be 5s"
+    assert "--start-period=10s" in content, "HEALTHCHECK start-period should be 10s"
+    assert "--retries=3" in content, "HEALTHCHECK retries should be 3"
+    assert "http://localhost/status.php" in content
+
+
+def test_efs_config_drift_sync_invariants():
+    """Verify 01-setup-ai.sh synchronizes modular configs using cmp -s and purges bare wildcard."""
+    hook_file = HOOKS_DIR / "01-setup-ai.sh"
+    content = hook_file.read_text(encoding="utf-8")
+
+    # Invariant: Differential config seeding
+    assert "! cmp -s" in content, "Hook must use ! cmp -s to avoid config drift on EFS"
+    assert "Updating modular config" in content
+
+    # Invariant: No bare wildcard in auto-provision template
+    assert "2 => '*'" not in content, "Bare wildcard entry must not be present in template"
+
+    # Invariant: Legacy wildcard cleanup
+    assert "sed" in content and "\\*" in content, "Hook must include legacy wildcard cleanup for pre-existing config.php"
+

@@ -3,14 +3,26 @@ name: Destroy / Purge Runtime Images
 on:
   workflow_dispatch:
     inputs:
-      repository_name:
-        description: "Amazon ECR Repository Name"
+      environment:
+        description: "Target Environment"
         required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - staging
+          - prod
+          - custom
+      repository_name:
+        description: "Amazon ECR Repository Name (Leave empty to use <env>-nextcloud-enterprise)"
+        required: false
         type: string
+        default: ""
       scope:
         description: "Purge Scope"
         required: true
         type: choice
+        default: all_images
         options:
           - all_images
           - untagged_only
@@ -19,6 +31,11 @@ on:
         description: "Target Tag (if scope is specific_tag, e.g. dev, latest)"
         required: false
         type: string
+      delete_repository:
+        description: "Delete the entire ECR repository after purging images"
+        required: false
+        default: false
+        type: boolean
       confirmation:
         description: "Safety Confirmation: Type DESTROY to proceed"
         required: true
@@ -29,7 +46,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: destroy-runtime-images-${{ inputs.repository_name }}
+  group: destroy-runtime-images-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +60,7 @@ jobs:
             echo "❌ Purge aborted: You must type 'DESTROY' in the confirmation input to prevent accidental deletion."
             exit 1
           fi
-          echo "⚠️ Confirmation verified. Purging images from ${{ inputs.repository_name }} (scope: ${{ inputs.scope }})..."
+          echo "⚠️ Confirmation verified. Processing runtime container image destroy/purge..."
 
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -61,35 +78,66 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
           audience: sts.amazonaws.com
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Execute ECR Image Purge
+      - name: Resolve Target ECR Repository
+        id: target
+        run: |
+          ENV="${{ inputs.environment }}"
+          CUSTOM_REPO="${{ inputs.repository_name }}"
+          if [ -n "$CUSTOM_REPO" ]; then
+            REPO="$CUSTOM_REPO"
+          elif [ "$ENV" != "custom" ]; then
+            REPO="${ENV}-nextcloud-enterprise"
+          else
+            REPO="dev-nextcloud-enterprise"
+          fi
+          echo "repo_name=${REPO}" >> "$GITHUB_OUTPUT"
+          echo "Target ECR repository: ${REPO}"
+
+      - name: Execute ECR Image Purge / Repository Deletion
         env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          REPO_NAME: ${{ inputs.repository_name }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          REPO_NAME: ${{ steps.target.outputs.repo_name }}
           SCOPE: ${{ inputs.scope }}
           TARGET_TAG: ${{ inputs.target_tag }}
+          DELETE_REPO: ${{ inputs.delete_repository }}
         run: |
           python3 -c "
           import os, boto3
+          from botocore.exceptions import ClientError
+
           region = os.environ.get('AWS_REGION', 'ap-southeast-1')
-          repo_name = os.environ.get('REPO_NAME', 'filestore-runtime')
+          repo_name = os.environ.get('REPO_NAME', 'dev-nextcloud-enterprise')
           scope = os.environ.get('SCOPE', 'all_images')
           target_tag = os.environ.get('TARGET_TAG', '').strip()
+          delete_repo = os.environ.get('DELETE_REPO', 'false').lower() == 'true'
 
           ecr = boto3.client('ecr', region_name=region)
           print(f'Connecting to ECR repository: {repo_name} ({region})')
 
           try:
+              # Check if repository exists
+              try:
+                  ecr.describe_repositories(repositoryNames=[repo_name])
+              except ClientError as e:
+                  if e.response['Error']['Code'] == 'RepositoryNotFoundException':
+                      print(f'ℹ️ ECR Repository {repo_name} does not exist or has already been deleted.')
+                      exit(0)
+                  raise
+
               if scope == 'specific_tag' and target_tag:
                   print(f'Deleting specific image tag: {target_tag}...')
-                  resp = ecr.batch_delete_image(repositoryName=repo_name, imageIds=[{'imageTag': target_tag}])
-                  print('Deleted:', [img.get('imageTag') for img in resp.get('imageIds', [])])
+                  try:
+                      resp = ecr.batch_delete_image(repositoryName=repo_name, imageIds=[{'imageTag': target_tag}])
+                      print('Deleted:', [img.get('imageTag') for img in resp.get('imageIds', [])])
+                  except Exception as e:
+                      print(f'Specific tag purge notice: {e}')
               else:
                   paginator = ecr.get_paginator('list_images')
                   filter_param = {'tagStatus': 'UNTAGGED'} if scope == 'untagged_only' else {}
@@ -106,14 +154,21 @@ jobs:
                           resp = ecr.batch_delete_image(repositoryName=repo_name, imageIds=chunk)
                           print(f'✓ Batch {i // 100 + 1}: Deleted {len(resp.get(\"imageIds\", []))} images.')
                       print('✅ ECR images purged successfully!')
+
+              if delete_repo:
+                  print(f'⚠️ Deleting ECR repository: {repo_name} (force=True)...')
+                  ecr.delete_repository(repositoryName=repo_name, force=True)
+                  print(f'✅ ECR repository {repo_name} deleted successfully!')
           except Exception as e:
-              print(f'ECR purge note: {e}')
+              print(f'ECR execution note: {e}')
+              raise
           "
 
       - name: Purge Summary
         run: |
           echo "============================================================"
           echo "🎉 ECR image purge completed successfully!"
-          echo "Repository : ${{ inputs.repository_name }}"
-          echo "Scope      : ${{ inputs.scope }}"
+          echo "Repository        : ${{ steps.target.outputs.repo_name }}"
+          echo "Scope             : ${{ inputs.scope }}"
+          echo "Repository Deleted: ${{ inputs.delete_repository }}"
           echo "============================================================"

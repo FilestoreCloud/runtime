@@ -70,11 +70,14 @@ class TestDockerfileStructure(unittest.TestCase):
         )
 
     def test_labels_and_healthcheck(self):
-        """Verifies container labels and HTTP healthcheck directive."""
+        """Verifies container labels and HTTP healthcheck directive tuned for < 15s boot."""
         self.assertRegex(self.dockerfile_content, r'LABEL version="[\d\.]+"')
         self.assertIn('LABEL maintainer="FilestoreCloud Engineering Team"', self.dockerfile_content)
         self.assertIn("HEALTHCHECK", self.dockerfile_content)
         self.assertIn("http://localhost/status.php", self.dockerfile_content)
+        self.assertIn("--interval=10s", self.dockerfile_content)
+        self.assertIn("--timeout=5s", self.dockerfile_content)
+        self.assertIn("--start-period=10s", self.dockerfile_content)
 
 
 class TestPHPConfigurations(unittest.TestCase):
@@ -88,6 +91,8 @@ class TestPHPConfigurations(unittest.TestCase):
 
         # ALB Reverse Proxy settings & dynamic proxy reading
         self.assertIn("'overwriteprotocol' => 'https'", content)
+        self.assertIn("'trusted_domains'", content)
+        self.assertIn("getenv('NEXTCLOUD_TRUSTED_DOMAINS')", content)
         self.assertIn("'trusted_proxies'", content)
         self.assertIn("getenv('TRUSTED_PROXIES')", content)
         self.assertIn("'10.0.0.0/16'", content)
@@ -107,6 +112,80 @@ class TestPHPConfigurations(unittest.TestCase):
         self.assertIn("OBJECTSTORE_S3_BUCKET", content)
         self.assertIn(r"'class' => '\\OC\\Files\\ObjectStore\\S3'", content)
         self.assertIn("OBJECTSTORE_S3_REGION", content)
+
+    def test_trusted_domains_resolution_logic(self):
+        """Validates dynamic NEXTCLOUD_TRUSTED_DOMAINS parsing, bare wildcard filtering, and fallback scenarios."""
+        with open(NEXTCLOUD_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Structural assertions on nextcloud.config.php implementation
+        self.assertIn("'trusted_domains'", content)
+        self.assertIn("NEXTCLOUD_TRUSTED_DOMAINS", content)
+        self.assertIn("localhost", content)
+        self.assertIn("127.0.0.1", content)
+        self.assertIn("array_unique", content)
+
+        # Standalone logic verification matching the PHP specification
+        def resolve_trusted_domains(raw_env):
+            domains = ["localhost", "127.0.0.1"]
+            if raw_env is not None and raw_env.strip() != "":
+                parsed = [item.strip() for item in re.split(r"[\s,]+", raw_env.strip()) if item.strip()]
+                # Filter bare wildcard '*'
+                parsed = [d for d in parsed if d != "*" and d != ""]
+                if parsed:
+                    for d in parsed:
+                        if d not in domains:
+                            domains.append(d)
+            return domains
+
+        # Fallback when unset or empty
+        self.assertEqual(resolve_trusted_domains(None), ["localhost", "127.0.0.1"])
+        self.assertEqual(resolve_trusted_domains(""), ["localhost", "127.0.0.1"])
+        self.assertEqual(resolve_trusted_domains("   "), ["localhost", "127.0.0.1"])
+
+        # Comma-separated domains
+        self.assertEqual(
+            resolve_trusted_domains("tenant1.png261.dev, tenant2.appleai.codes"),
+            ["localhost", "127.0.0.1", "tenant1.png261.dev", "tenant2.appleai.codes"],
+        )
+
+        # Space-separated domains
+        self.assertEqual(
+            resolve_trusted_domains("tenant1.png261.dev tenant2.appleai.codes"),
+            ["localhost", "127.0.0.1", "tenant1.png261.dev", "tenant2.appleai.codes"],
+        )
+
+        # Bare wildcard MUST be stripped to prevent Host Header injection
+        self.assertEqual(
+            resolve_trusted_domains("localhost 127.0.0.1 * tenant1.png261.dev"),
+            ["localhost", "127.0.0.1", "tenant1.png261.dev"],
+        )
+        self.assertEqual(resolve_trusted_domains("*"), ["localhost", "127.0.0.1"])
+        self.assertEqual(resolve_trusted_domains("*, *"), ["localhost", "127.0.0.1"])
+
+        # Vanity subdomains with wildcard prefixes must be preserved
+        self.assertEqual(
+            resolve_trusted_domains("*.png261.dev *.appleai.codes"),
+            ["localhost", "127.0.0.1", "*.png261.dev", "*.appleai.codes"],
+        )
+
+        # If PHP CLI is available, directly evaluate the PHP file with environment variables
+        php_bin = shutil.which("php")
+        if php_bin:
+            test_cases = [
+                ("tenant1.png261.dev, tenant2.appleai.codes", ["localhost", "127.0.0.1", "tenant1.png261.dev", "tenant2.appleai.codes"]),
+                ("localhost 127.0.0.1 * *.png261.dev", ["localhost", "127.0.0.1", "*.png261.dev"]),
+                ("*", ["localhost", "127.0.0.1"]),
+                ("", ["localhost", "127.0.0.1"]),
+            ]
+            for env_val, expected in test_cases:
+                cmd = [
+                    php_bin,
+                    "-r",
+                    f'putenv("NEXTCLOUD_TRUSTED_DOMAINS={env_val}"); require "{NEXTCLOUD_CONFIG_PATH}"; echo json_encode($CONFIG["trusted_domains"]);',
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(res.stdout), expected)
 
     def test_trusted_proxies_resolution_logic(self):
         """Validates dynamic TRUSTED_PROXIES parsing logic across varied delimiters and fallback scenarios."""
@@ -461,6 +540,102 @@ fi
                 ".tenant_initialized flag was created despite OCC failure! Gating failed.",
             )
             self.assertIn("Enabling assistant app", res.stderr)
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_efs_modular_config_drift_synchronization(self):
+        """Verifies modular config files update on EFS when changed in container image (! cmp -s), leaving config.php untouched."""
+        self.assertIn("! cmp -s", self.hook_content, "Hook must use differential comparison (! cmp -s) for config sync")
+        self.assertIn("Updating modular config", self.hook_content)
+
+        temp_dir = tempfile.mkdtemp(prefix="test_drift_sync_")
+        try:
+            src_config = os.path.join(temp_dir, "usr", "src", "nextcloud", "config")
+            html_config = os.path.join(temp_dir, "var", "www", "html", "config")
+            os.makedirs(src_config, exist_ok=True)
+            os.makedirs(html_config, exist_ok=True)
+
+            # 1. Existing persistent tenant config.php on EFS (must NEVER be overwritten)
+            tenant_config_php = os.path.join(html_config, "config.php")
+            with open(tenant_config_php, "w") as f:
+                f.write("<?php $CONFIG = ['instanceid' => 'tenant_persistent_123', 'installed' => true];")
+
+            # 2. Existing outdated modular config on EFS
+            efs_mod_cfg = os.path.join(html_config, "nextcloud.config.php")
+            with open(efs_mod_cfg, "w") as f:
+                f.write("<?php // Old release v1")
+
+            # 3. New modular config in container image
+            img_mod_cfg = os.path.join(src_config, "nextcloud.config.php")
+            with open(img_mod_cfg, "w") as f:
+                f.write("<?php // New release v2 with updated security settings")
+
+            # Execute drift sync logic
+            sync_script = f"""#!/bin/sh
+set -e
+for cfg in "{src_config}"/*.config.php; do
+    if [ -f "$cfg" ]; then
+        target="{html_config}/$(basename "$cfg")"
+        if [ ! -f "$target" ] || ! cmp -s "$cfg" "$target"; then
+            cp "$cfg" "$target"
+        fi
+    fi
+done
+"""
+            res = subprocess.run(["sh", "-c", sync_script], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Sync script failed: {res.stderr}")
+
+            # Verify nextcloud.config.php was updated
+            with open(efs_mod_cfg, "r") as f:
+                updated_content = f.read()
+            self.assertEqual(updated_content, "<?php // New release v2 with updated security settings")
+
+            # Verify tenant config.php was completely preserved
+            with open(tenant_config_php, "r") as f:
+                tenant_content = f.read()
+            self.assertIn("tenant_persistent_123", tenant_content)
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_wildcard_purged_from_config_php_template_and_legacy(self):
+        """Verifies bare wildcard '*' is absent from auto-provision template and purged from pre-existing config.php."""
+        # Assert auto-provisioning template has no bare '*'
+        self.assertNotIn("2 => '*',", self.hook_content, "Bare wildcard '*' must be removed from auto-provision template")
+        self.assertNotIn("=> '*'", self.hook_content, "Bare wildcard '*' must not appear in any trusted_domains entry")
+
+        # Test legacy cleanup in sandbox
+        temp_dir = tempfile.mkdtemp(prefix="test_legacy_purge_")
+        try:
+            html_config = os.path.join(temp_dir, "var", "www", "html", "config")
+            os.makedirs(html_config, exist_ok=True)
+            legacy_config = os.path.join(html_config, "config.php")
+
+            with open(legacy_config, "w") as f:
+                f.write("""<?php
+$CONFIG = array (
+  'trusted_domains' => array (
+    0 => 'localhost',
+    1 => '127.0.0.1',
+    2 => '*',
+  ),
+  'installed' => true,
+);
+""")
+
+            # Run legacy cleanup
+            cleanup_script = f"""#!/bin/sh
+if [ -f "{legacy_config}" ]; then
+    sed -i.bak "/['\\"]\\*['\\"]/d" "{legacy_config}" 2>/dev/null && rm -f "{legacy_config}.bak" 2>/dev/null || sed -i "/['\\"]\\*['\\"]/d" "{legacy_config}" 2>/dev/null || :
+fi
+"""
+            res = subprocess.run(["sh", "-c", cleanup_script], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Cleanup script failed: {res.stderr}")
+
+            with open(legacy_config, "r") as f:
+                cleaned = f.read()
+            self.assertNotIn("'*'", cleaned, "Bare wildcard '*' must be purged from legacy config.php")
+            self.assertIn("'localhost'", cleaned)
+            self.assertIn("'127.0.0.1'", cleaned)
         finally:
             shutil.rmtree(temp_dir)
 

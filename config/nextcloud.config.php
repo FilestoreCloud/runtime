@@ -18,6 +18,27 @@ $CONFIG = [
     // The ALB terminates TLS and forwards HTTP to the Fargate container.
     // These tell Nextcloud to treat incoming requests as HTTPS.
     'overwriteprotocol' => 'https',
+
+    // ── Trusted Domains ─────────────────────────────────────────────────────
+    // Dynamic resolution from NEXTCLOUD_TRUSTED_DOMAINS environment variable
+    // to prevent Host Header injection attacks (bare wildcard '*' is strictly forbidden).
+    'trusted_domains'   => [
+        ...(function () {
+            $domains = ['localhost', '127.0.0.1'];
+            $raw = getenv('NEXTCLOUD_TRUSTED_DOMAINS');
+            if ($raw !== false && trim($raw) !== '') {
+                $parsed = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', trim($raw)))));
+                // Strictly exclude bare wildcard '*'
+                $parsed = array_values(array_filter($parsed, function ($d) {
+                    return $d !== '*' && $d !== '';
+                }));
+                if (!empty($parsed)) {
+                    $domains = array_values(array_unique(array_merge($domains, $parsed)));
+                }
+            }
+            return $domains;
+        })(),
+    ],
     'trusted_proxies'   => [
         ...(function () {
             $raw = getenv('TRUSTED_PROXIES');

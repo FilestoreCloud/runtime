@@ -37,12 +37,18 @@ chown -R www-data:www-data /var/www/html/data 2>/dev/null || :
 # ──────────────────────────────────────────────────────────────────────────
 CURRENT_STEP="Seeding modular configs"
 mkdir -p /var/www/html/config
+
+# Remove legacy bare wildcard '*' from existing config.php in EFS if present
+if [ -f /var/www/html/config/config.php ]; then
+    sed -i.bak "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null && rm -f /var/www/html/config/config.php.bak 2>/dev/null || sed -i "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null || :
+fi
+
 if [ -d /usr/src/nextcloud/config ]; then
     for cfg in /usr/src/nextcloud/config/*.config.php; do
         if [ -f "$cfg" ]; then
             target="/var/www/html/config/$(basename "$cfg")"
-            if [ ! -f "$target" ]; then
-                echo "[ENTRYPOINT-HOOK] Seeding $(basename "$cfg") to EFS config directory..."
+            if [ ! -f "$target" ] || ! cmp -s "$cfg" "$target"; then
+                echo "[ENTRYPOINT-HOOK] Updating modular config $(basename "$cfg") in EFS..."
                 cp "$cfg" "$target"
                 chown www-data:www-data "$target" 2>/dev/null || :
             fi
@@ -68,7 +74,6 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
   'trusted_domains' => array (
     0 => 'localhost',
     1 => '127.0.0.1',
-    2 => '*',
   ),
   'datadirectory' => '/var/www/html/data',
   'dbtype' => 'pgsql',

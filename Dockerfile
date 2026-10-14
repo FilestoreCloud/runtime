@@ -56,5 +56,5 @@ RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost/status.php || exit 1
