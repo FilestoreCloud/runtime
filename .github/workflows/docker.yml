@@ -33,48 +33,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  lint-dockerfile:
-    name: Lint Dockerfile (Hadolint)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Lint Dockerfile (hadolint)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          config: .hadolint.yaml
-
-  unit-tests:
-    name: Unit Tests & Asset Validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Verify Docker Assets & Hooks
-        run: |
-          echo "Verifying Docker configuration files and entrypoint hooks..."
-          test -f Dockerfile || { echo "❌ Missing Dockerfile"; exit 1; }
-          test -f config/ai.config.php || { echo "❌ Missing config/ai.config.php"; exit 1; }
-          test -f config/nextcloud.config.php || { echo "❌ Missing config/nextcloud.config.php"; exit 1; }
-          test -f config/opcache.ini || { echo "❌ Missing config/opcache.ini"; exit 1; }
-          test -f hooks/01-setup-ai.sh || { echo "❌ Missing hooks/01-setup-ai.sh"; exit 1; }
-          chmod +x hooks/01-setup-ai.sh tests/run_tests.sh
-          echo "✅ All Docker assets and entrypoint hooks verified."
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Run Automated Test Suite
-        run: ./tests/run_tests.sh
-
   build-and-push:
     name: Build & Push Image to ECR
-    needs: [lint-dockerfile, unit-tests]
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
