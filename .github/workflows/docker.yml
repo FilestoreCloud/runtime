@@ -1,4 +1,4 @@
-name: Build & Push Runtime Image
+name: Deploy
 
 on:
   workflow_dispatch:

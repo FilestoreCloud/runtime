@@ -1,4 +1,4 @@
-name: Destroy / Purge Runtime Images
+name: Destroy
 
 on:
   workflow_dispatch:
