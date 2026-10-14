@@ -1,0 +1,10 @@
+.git
+.gitignore
+.githook
+.github
+.devsecops
+.hadolint.yaml
+.pre-commit-config.yaml
+*.md
+*.log
+.DS_Store

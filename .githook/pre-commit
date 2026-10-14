@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Hook: pre-commit
+# Purpose: Prevent direct commits to protected branches, verify staged security,
+#          and run code quality & DevSecOps checks via pre-commit.
+# ==============================================================================
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$HOOK_DIR/helpers/colors.sh"
+source "$HOOK_DIR/helpers/git-env.sh"
+source "$HOOK_DIR/helpers/security-guard.sh"
+
+CURRENT_BRANCH=$(get_current_branch)
+
+# ------------------------------------------------------------------------------
+# 1. Branch Protection Check
+# ------------------------------------------------------------------------------
+if [ "${ALLOW_DIRECT_MAIN:-0}" != "1" ] && [ "${SKIP_BRANCH_PROTECTION:-0}" != "1" ]; then
+  if is_protected_branch "$CURRENT_BRANCH"; then
+    log_error "Direct commits to protected branch '$CURRENT_BRANCH' are forbidden!"
+    printf "\n"
+    printf "  ${COLOR_BOLD}Recommended workflow:${COLOR_RESET}\n"
+    printf "    1. Create a feature branch: ${COLOR_CYAN}git checkout -b feat/your-feature-name${COLOR_RESET}\n"
+    printf "    2. Commit changes and push to origin\n"
+    printf "    3. Open a Pull Request for review\n\n"
+    printf "  ${COLOR_GRAY}(To bypass in an emergency, set ALLOW_DIRECT_MAIN=1 git commit ...)${COLOR_RESET}\n\n"
+    exit 1
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 2. Staged Security & Hygiene Scan
+# ------------------------------------------------------------------------------
+log_step "Checking staged files for secrets and conflict markers..."
+if ! check_staged_security; then
+  exit 1
+fi
+log_success "Staged files hygiene scan passed."
+
+# ------------------------------------------------------------------------------
+# 3. Code Quality & DevSecOps Linters (Pre-Commit Enforcement)
+# ------------------------------------------------------------------------------
+log_step "Running code quality & automated test suite (./tests/run_tests.sh)..."
+if [ -f "./tests/run_tests.sh" ]; then
+  chmod +x ./tests/run_tests.sh
+  if ! ./tests/run_tests.sh; then
+    log_error "Runtime test suite or quality checks failed! Commit blocked."
+    exit 1
+  fi
+  log_success "All runtime automated tests passed."
+else
+  log_error "Test runner ./tests/run_tests.sh not found."
+  exit 1
+fi
+
+log_success "All local code quality standards verified successfully. Proceeding with commit."
+exit 0

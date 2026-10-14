@@ -43,9 +43,30 @@ Container builds are automated via [`.github/workflows/docker.yml`](.github/work
 
 ---
 
-## 4. Local Build & Test
+## 4. Automated Testing
 
-To build and test the image locally:
+Run the automated test suite locally:
+
+```bash
+# Run all automated static, configuration, and simulation tests
+./tests/run_tests.sh
+
+# Or run tests including full Docker build verification
+./tests/run_tests.sh --docker
+```
+
+The automated test suite verifies:
+* **Dockerfile Invariants:** Multi-stage build separation, pre-baked AI applications, labels, hook lifecycle registrations, and container healthcheck.
+* **PHP Hardening & Config:** Reverse proxy HTTPS enforcement, RFC 1918 proxy CIDRs, APCu local memcache, HSTS, and S3 Primary ObjectStore parameters.
+* **OPcache Production Tuning:** Memory limits, string buffers, and pre-compiled comment preservation.
+* **Entrypoint Hook Simulation:** Sandboxed mock execution verifying `.tenant_initialized` persistence flag logic, `FORCE_REINIT`, AI app enablement, and Redis locking.
+* **Security & Vulnerability Auditing (Trivy):** Automated Aqua Security Trivy scanning checking for CVE vulnerabilities, misconfigurations, and secret leaks.
+
+---
+
+## 5. Local Build & Run
+
+To build and run the image locally:
 
 ```bash
 docker build -t filestore-runtime:latest .

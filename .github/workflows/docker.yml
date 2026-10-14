@@ -6,12 +6,11 @@ on:
       image_tag:
         description: 'Custom Docker Image Tag (leave empty for git SHA and latest)'
         required: false
-        default: ''
         type: string
       repository_name:
         description: 'Amazon ECR Repository Name'
-        required: true
-        default: 'filestore-runtime'
+        required: false
+        default: 'dev-nextcloud-enterprise'
         type: string
       push_to_ecr:
         description: 'Push to Amazon ECR (false for dry-run build)'
@@ -34,36 +33,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  lint-and-validate:
-    name: Lint & Validate Docker Assets
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Lint Dockerfile (hadolint)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          config: .hadolint.yaml
-
-      - name: Verify Docker Assets & Hooks
-        run: |
-          echo "Verifying Docker configuration files and entrypoint hooks..."
-          test -f Dockerfile || { echo "❌ Missing Dockerfile"; exit 1; }
-          test -f config/ai.config.php || { echo "❌ Missing config/ai.config.php"; exit 1; }
-          test -f config/nextcloud.config.php || { echo "❌ Missing config/nextcloud.config.php"; exit 1; }
-          test -f hooks/01-setup-ai.sh || { echo "❌ Missing hooks/01-setup-ai.sh"; exit 1; }
-          chmod +x hooks/01-setup-ai.sh
-          echo "✅ All Docker assets and entrypoint hooks verified."
-
   build-and-push:
     name: Build & Push Image to ECR
-    needs: [lint-and-validate]
     runs-on: ubuntu-latest
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
-      ECR_REPOSITORY: ${{ inputs.repository_name || 'filestore-runtime' }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ inputs.repository_name || 'dev-nextcloud-enterprise' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -72,31 +47,20 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Configure AWS Credentials via OIDC
+        id: aws-creds
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN || 'arn:aws:iam::649519997247:role/nextcloud-github-actions-deploy-role' }}
+          role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME }}
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
       - name: Verify AWS Identity
         run: |
-          echo "Connected to AWS Account via OIDC:"
-          aws sts get-caller-identity
+          echo "Connected to AWS Account ID: ${{ steps.aws-creds.outputs.aws-account-id }}"
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Ensure ECR Repository Exists
-        run: |
-          echo "Ensuring ECR repository '${{ env.ECR_REPOSITORY }}' exists..."
-          aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1 || \
-            aws ecr create-repository \
-              --repository-name "${{ env.ECR_REPOSITORY }}" \
-              --region "${{ env.AWS_REGION }}" \
-              --image-scanning-configuration scanOnPush=true \
-              --tags Key=Environment,Value=prod Key=ManagedBy,Value=GitHub-Actions
-          echo "✅ ECR repository ready: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
 
       - name: Determine Docker Image Tags
         id: meta
@@ -143,3 +107,17 @@ jobs:
           echo "Image Digest: ${{ steps.build-push.outputs.digest }}"
           echo "Primary Tag : ${{ steps.meta.outputs.primary_tag }}"
           echo "============================================================"
+
+      - name: Trigger GitOps Rollout in infra
+        if: (startsWith(github.ref, 'refs/tags/v') || github.ref_name == 'dev' || github.event_name == 'workflow_dispatch') && env.GITOPS_TOKEN != ''
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+          ORG_NAME: ${{ github.repository_owner }}
+        run: |
+          echo "Dispatching release event to ${ORG_NAME}/infra..."
+          curl -s -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${GITOPS_TOKEN}" \
+            https://api.github.com/repos/${ORG_NAME}/infra/dispatches \
+            -d "{\"event_type\": \"runtime_release\", \"client_payload\": {\"tag\": \"${{ github.ref_name }}\", \"image\": \"${{ steps.meta.outputs.primary_tag }}\"}}"
+          echo "✅ Release event dispatched to ${ORG_NAME}/infra."

@@ -18,7 +18,39 @@ $CONFIG = [
     // The ALB terminates TLS and forwards HTTP to the Fargate container.
     // These tell Nextcloud to treat incoming requests as HTTPS.
     'overwriteprotocol' => 'https',
-    'trusted_proxies'   => ['10.0.0.0/16'],   // VPC CIDR — adjust if needed
+
+    // ── Trusted Domains ─────────────────────────────────────────────────────
+    // Dynamic resolution from NEXTCLOUD_TRUSTED_DOMAINS environment variable
+    // to prevent Host Header injection attacks (bare wildcard '*' is strictly forbidden).
+    'trusted_domains'   => [
+        ...(function () {
+            $domains = ['localhost', '127.0.0.1'];
+            $raw = getenv('NEXTCLOUD_TRUSTED_DOMAINS');
+            if ($raw !== false && trim($raw) !== '') {
+                $parsed = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', trim($raw)))));
+                // Strictly exclude bare wildcard '*'
+                $parsed = array_values(array_filter($parsed, function ($d) {
+                    return $d !== '*' && $d !== '';
+                }));
+                if (!empty($parsed)) {
+                    $domains = array_values(array_unique(array_merge($domains, $parsed)));
+                }
+            }
+            return $domains;
+        })(),
+    ],
+    'trusted_proxies'   => [
+        ...(function () {
+            $raw = getenv('TRUSTED_PROXIES');
+            if ($raw !== false && trim($raw) !== '') {
+                $proxies = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', trim($raw)))));
+                if (!empty($proxies)) {
+                    return $proxies;
+                }
+            }
+            return ['10.0.0.0/16'];
+        })(),
+    ],
     'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
 
     // ── Strict-Transport-Security ───────────────────────────────────────────
@@ -53,10 +85,10 @@ if ($s3Bucket) {
         'class' => '\\OC\\Files\\ObjectStore\\S3',
         'arguments' => [
             'bucket' => $s3Bucket,
-            'autocreate' => false,
-            'region' => getenv('AWS_REGION') ?: 'ap-southeast-1',
-            'use_ssl' => true,
+            'autocreate' => (getenv('OBJECTSTORE_S3_AUTOCREATE') === 'true'),
+            'region' => getenv('OBJECTSTORE_S3_REGION') ?: (getenv('AWS_REGION') ?: 'ap-southeast-1'),
+            'use_ssl' => (getenv('OBJECTSTORE_S3_SSL') !== 'false'),
+            'use_path_style' => (getenv('OBJECTSTORE_S3_USEPATH_STYLE') === 'true'),
         ],
     ];
 }
-

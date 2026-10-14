@@ -2,117 +2,167 @@
 # ==============================================================================
 # Nextcloud Official Docker Entrypoint Hook
 # Auto-enables pre-baked AI applications and configures LiteLLM Bedrock Bridge
-# Also applies all recommended system configuration to fix Admin security warnings
+# Uses persistent flag in EFS to optimize boot time (sub-second cold start)
 # ==============================================================================
 set -e
+
+INIT_FLAG="/var/www/html/config/.tenant_initialized"
+
+# Error trap handler for deterministic failure logging and gating
+CURRENT_STEP="Startup pre-flight"
+cleanup_on_exit() {
+    exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        echo "[ENTRYPOINT-HOOK] ❌ ERROR: Initialization step '${CURRENT_STEP}' failed with exit code ${exit_code}!" >&2
+        echo "[ENTRYPOINT-HOOK] ❌ Halting execution. Tenant initialization aborted; .tenant_initialized was not created." >&2
+        rm -f "${INIT_FLAG}" 2>/dev/null
+    fi
+}
+trap cleanup_on_exit EXIT
 
 echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and configuration..."
 
 # ──────────────────────────────────────────────────────────────────────────
+# 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
+# ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Ensuring data directory"
+mkdir -p /var/www/html/data
+if [ ! -f /var/www/html/data/.ncdata ]; then
+    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata
+fi
+chown -R www-data:www-data /var/www/html/data 2>/dev/null || :
+
+# ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
 # ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Seeding modular configs"
+mkdir -p /var/www/html/config
+
+# Remove legacy bare wildcard '*' from existing config.php in EFS if present
+if [ -f /var/www/html/config/config.php ]; then
+    sed -i.bak "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null && rm -f /var/www/html/config/config.php.bak 2>/dev/null || sed -i "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null || :
+fi
+
 if [ -d /usr/src/nextcloud/config ]; then
     for cfg in /usr/src/nextcloud/config/*.config.php; do
         if [ -f "$cfg" ]; then
             target="/var/www/html/config/$(basename "$cfg")"
-            if [ ! -f "$target" ]; then
-                echo "[ENTRYPOINT-HOOK] Seeding $(basename "$cfg") to EFS config directory..."
+            if [ ! -f "$target" ] || ! cmp -s "$cfg" "$target"; then
+                echo "[ENTRYPOINT-HOOK] Updating modular config $(basename "$cfg") in EFS..."
                 cp "$cfg" "$target"
-                chown www-data:www-data "$target" 2>/dev/null || true
+                chown www-data:www-data "$target" 2>/dev/null || :
             fi
         fi
     done
 fi
 
-# Improvement 2: Verify database installation state via occ status
+# ──────────────────────────────────────────────────────────────────────────
+# 0.1 AUTO-PROVISION CONFIG.PHP IF NOT PRESENT
+# ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Auto-provisioning config.php check"
+if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
+    echo "[ENTRYPOINT-HOOK] Initializing /var/www/html/config/config.php with PostgreSQL bindings..."
+    mkdir -p /var/www/html/config
+    INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
+    SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
+    cat <<EOF > /var/www/html/config/config.php
+<?php
+\$CONFIG = array (
+  'instanceid' => '${INSTANCE_ID}',
+  'passwordsalt' => 'salt_${INSTANCE_ID}',
+  'secret' => '${SECRET}',
+  'trusted_domains' => array (
+    0 => 'localhost',
+    1 => '127.0.0.1',
+  ),
+  'datadirectory' => '/var/www/html/data',
+  'dbtype' => 'pgsql',
+  'version' => '30.0.17.2',
+  'overwrite.cli.url' => 'http://localhost',
+  'dbname' => '${POSTGRES_DB:-nextcloud}',
+  'dbhost' => '${POSTGRES_HOST}',
+  'dbport' => '',
+  'dbtableprefix' => 'oc_',
+  'dbuser' => '${POSTGRES_USER:-nextcloud}',
+  'dbpassword' => '${POSTGRES_PASSWORD:-}',
+  'installed' => true,
+);
+EOF
+    chown -R www-data:www-data /var/www/html/config
+    echo "[ENTRYPOINT-HOOK] config.php successfully provisioned with installed=true."
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# 1. OPTIMIZED INITIALIZATION VIA PERSISTENT EFS FLAG
+# ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Checking Nextcloud installation status"
 if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -q "installed: true"; then
-    echo "[ENTRYPOINT-HOOK] Nextcloud is installed. Activating pre-baked AI apps..."
+    if [ ! -f "$INIT_FLAG" ] || [ "${FORCE_REINIT:-0}" = "1" ]; then
+        echo "[ENTRYPOINT-HOOK] Initializing tenant configuration & activating pre-baked AI apps..."
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # 1. ENABLE AI APPS
-    # ──────────────────────────────────────────────────────────────────────────
-    su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force assistant" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force integration_openai" || true
+        # Enable AI Apps
+        CURRENT_STEP="Enabling assistant app"
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force assistant"
 
-    # Configure Assistant guardrails (Zero Data Retention)
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant enabled --value=yes" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant zero_data_retention --value=1" || true
+        CURRENT_STEP="Enabling integration_openai app"
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force integration_openai"
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # 2. CONFIGURE LITELLM BEDROCK BRIDGE
-    # ──────────────────────────────────────────────────────────────────────────
-    LITELLM_ENDPOINT="${LITELLM_API_URL:-http://127.0.0.1:4000/v1}"
-    LITELLM_KEY="${LITELLM_API_KEY:-sk-saas-nextcloud-internal}"
-    BEDROCK_MODEL="${BEDROCK_DEFAULT_MODEL:-bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0}"
+        # Configure Assistant guardrails (Zero Data Retention)
+        CURRENT_STEP="Configuring assistant guardrails"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant enabled --value=yes"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant zero_data_retention --value=1"
 
-    echo "[ENTRYPOINT-HOOK] Binding AI Provider to LiteLLM Bedrock Bridge at ${LITELLM_ENDPOINT}..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${LITELLM_ENDPOINT}'" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${LITELLM_KEY}'" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai default_model --value='${BEDROCK_MODEL}'" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1" || true
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1" || true
+        # Configure External AI Provider if explicitly configured via environment
+        AI_ENDPOINT="${AI_API_URL:-${OPENAI_API_URL:-}}"
+        if [ -n "${AI_ENDPOINT}" ]; then
+            AI_KEY="${AI_API_KEY:-${OPENAI_API_KEY:-}}"
+            echo "[ENTRYPOINT-HOOK] Binding AI Provider to ${AI_ENDPOINT}..."
+            CURRENT_STEP="Binding AI provider endpoint"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${AI_ENDPOINT}'"
+            if [ -n "${AI_KEY}" ]; then
+                CURRENT_STEP="Setting AI provider key"
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${AI_KEY}'"
+            fi
+            CURRENT_STEP="Enabling AI text processing and assistant features"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1"
+        fi
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # 3. HTTPS / REVERSE-PROXY SETTINGS (ALB terminates TLS → HTTP to container)
-    #    Fixes: "Accessing site insecurely via HTTP" + Strict-Transport-Security
-    # ──────────────────────────────────────────────────────────────────────────
-    echo "[ENTRYPOINT-HOOK] Configuring HTTPS proxy settings..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set overwriteprotocol --value=https" || true
-    # overwritecliurl — use env var OVERWRITECLIURL if set, otherwise keep existing value
+        # Optional Redis Distributed Locking (if REDIS_HOST configured)
+        if [ -n "${REDIS_HOST}" ]; then
+            echo "[ENTRYPOINT-HOOK] Redis detected at ${REDIS_HOST} — configuring distributed locking..."
+            CURRENT_STEP="Configuring Redis distributed locking"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set memcache.locking --value='\OC\Memcache\Redis'"
+            CURRENT_STEP="Configuring Redis host"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis host --value='${REDIS_HOST}'"
+            CURRENT_STEP="Configuring Redis port"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis port --value=${REDIS_PORT:-6379} --type=integer"
+        fi
+
+        # Missing database indices & migrations (one-time execution)
+        echo "[ENTRYPOINT-HOOK] Adding missing database indices and initial repairs..."
+        CURRENT_STEP="Adding missing database indices"
+        su -s /bin/sh www-data -c "php /var/www/html/occ db:add-missing-indices"
+
+        CURRENT_STEP="Running maintenance repair"
+        su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive"
+
+        # Mark initialization as completed in persistent storage (EFS)
+        CURRENT_STEP="Marking tenant initialization complete"
+        touch "$INIT_FLAG"
+        chown www-data:www-data "$INIT_FLAG" 2>/dev/null || :
+        echo "[ENTRYPOINT-HOOK] ✅ First-time tenant setup completed and persisted to EFS."
+    else
+        echo "[ENTRYPOINT-HOOK] ⚡ Tenant already initialized in EFS. Fast-booting container (< 1s)."
+    fi
+
+    # Dynamic CLI URL update if specified at runtime
     if [ -n "${OVERWRITECLIURL}" ]; then
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set overwritecliurl --value='${OVERWRITECLIURL}'" || true
+        CURRENT_STEP="Setting overwritecliurl"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set overwritecliurl --value='${OVERWRITECLIURL}'"
     fi
-    # Trusted proxy range covering the entire VPC CIDR (ALB uses VPC IPs)
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set trusted_proxies 0 --value='10.0.0.0/16'" || true
-    # Force HSTS header to be emitted by Nextcloud as well (belt-and-suspenders with ALB header policy)
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set hsts --value=true --type=boolean" || true
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 4. MAINTENANCE WINDOW (2 AM UTC = low-traffic)
-    #    Fixes: "Server has no maintenance window start time configured"
-    # ──────────────────────────────────────────────────────────────────────────
-    MAINT_WINDOW="${NC_maintenance_window_start:-2}"
-    echo "[ENTRYPOINT-HOOK] Setting maintenance window start to ${MAINT_WINDOW}:00 UTC..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set maintenance_window_start --value=${MAINT_WINDOW} --type=integer" || true
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 5. DEFAULT PHONE REGION
-    #    Fixes: "Your installation has no default phone region set"
-    # ──────────────────────────────────────────────────────────────────────────
-    PHONE_REGION="${NC_default_phone_region:-VN}"
-    echo "[ENTRYPOINT-HOOK] Setting default phone region to ${PHONE_REGION}..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set default_phone_region --value='${PHONE_REGION}'" || true
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 6. MEMCACHE (APCu for local cache; Redis not available in this Fargate config)
-    #    Fixes: "The database is used for transactional file locking"
-    #    Note: For production multi-replica, replace APCu with Redis ElastiCache
-    # ──────────────────────────────────────────────────────────────────────────
-    echo "[ENTRYPOINT-HOOK] Configuring APCu memcache..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set memcache.local --value='\OC\Memcache\APCu'" || true
-    # If REDIS_HOST env var is present (optional ElastiCache), configure Redis locking
-    if [ -n "${REDIS_HOST}" ]; then
-        echo "[ENTRYPOINT-HOOK] Redis detected at ${REDIS_HOST} — enabling Redis distributed locking..."
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set memcache.locking --value='\OC\Memcache\Redis'" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis host --value='${REDIS_HOST}'" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis port --value=${REDIS_PORT:-6379} --type=integer" || true
-    fi
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 7. MISSING DATABASE INDICES
-    #    Fixes: "Detected some missing optional indices" (fs_storage_path_prefix)
-    # ──────────────────────────────────────────────────────────────────────────
-    echo "[ENTRYPOINT-HOOK] Adding missing database indices..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ db:add-missing-indices" || true
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 8. MIMETYPE MIGRATIONS
-    #    Fixes: "One or more mimetype migrations are available"
-    # ──────────────────────────────────────────────────────────────────────────
-    echo "[ENTRYPOINT-HOOK] Running mimetype and DB repair migrations..."
-    su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive" || true
-
-    echo "[ENTRYPOINT-HOOK] ✅ All Nextcloud configuration and repairs completed successfully."
 else
     echo "[ENTRYPOINT-HOOK] Nextcloud not fully installed yet; hook will execute on next boot or post-installation."
 fi
+
+CURRENT_STEP="Completed successfully"
