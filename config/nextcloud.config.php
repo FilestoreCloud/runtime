@@ -18,7 +18,18 @@ $CONFIG = [
     // The ALB terminates TLS and forwards HTTP to the Fargate container.
     // These tell Nextcloud to treat incoming requests as HTTPS.
     'overwriteprotocol' => 'https',
-    'trusted_proxies'   => ['10.0.0.0/16'],   // VPC CIDR — adjust if needed
+    'trusted_proxies'   => [
+        ...(function () {
+            $raw = getenv('TRUSTED_PROXIES');
+            if ($raw !== false && trim($raw) !== '') {
+                $proxies = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', trim($raw)))));
+                if (!empty($proxies)) {
+                    return $proxies;
+                }
+            }
+            return ['10.0.0.0/16'];
+        })(),
+    ],
     'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
 
     // ── Strict-Transport-Security ───────────────────────────────────────────

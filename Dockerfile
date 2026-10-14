@@ -13,12 +13,17 @@ FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl tar ca-certificates
 
 ENV ASSISTANT_VERSION="v4.0.0"
+ENV ASSISTANT_SHA256="0d7c72d3cd8a41cdb7a402d0822331d6cad23271a9a4ee6222c85f00b2dd6271"
 ENV OPENAI_INTEGRATION_VERSION="v5.0.0"
+ENV OPENAI_INTEGRATION_SHA256="c980b47d462d6f84a4161e13122277fa049b0650da14207d98066ee7d5ba5127"
 
 WORKDIR /apps
+# hadolint ignore=DL4006
 RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assistant/releases/download/${ASSISTANT_VERSION}/assistant-${ASSISTANT_VERSION}.tar.gz" \
+    && echo "${ASSISTANT_SHA256}  assistant.tar.gz" | sha256sum -c - \
     && tar -xzf assistant.tar.gz && rm -f assistant.tar.gz \
     && curl -fsSL -o integration_openai.tar.gz "https://github.com/nextcloud-releases/integration_openai/releases/download/${OPENAI_INTEGRATION_VERSION}/integration_openai-${OPENAI_INTEGRATION_VERSION}.tar.gz" \
+    && echo "${OPENAI_INTEGRATION_SHA256}  integration_openai.tar.gz" | sha256sum -c - \
     && tar -xzf integration_openai.tar.gz && rm -f integration_openai.tar.gz
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
@@ -46,11 +51,9 @@ RUN mkdir -p /var/www/html/config \
 # Copy entrypoint hooks
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh
-COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/pre-installation/01-setup-ai.sh
 
 RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
-    && chmod +x /docker-entrypoint-hooks.d/pre-installation/01-setup-ai.sh \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \

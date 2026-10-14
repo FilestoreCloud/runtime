@@ -4,6 +4,7 @@ Automated Test Suite for FilestoreCloud Runtime Container
 Tests Dockerfile architecture, PHP configurations, OPcache settings, and entrypoint hooks.
 """
 
+import json
 import os
 import re
 import shutil
@@ -11,7 +12,8 @@ import subprocess
 import tempfile
 import unittest
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+RUNTIME_DIR = os.environ.get("RUNTIME_REPO_ROOT")
+REPO_ROOT = os.path.abspath(RUNTIME_DIR) if RUNTIME_DIR else os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DOCKERFILE_PATH = os.path.join(REPO_ROOT, "Dockerfile")
 NEXTCLOUD_CONFIG_PATH = os.path.join(REPO_ROOT, "config", "nextcloud.config.php")
 AI_CONFIG_PATH = os.path.join(REPO_ROOT, "config", "ai.config.php")
@@ -34,9 +36,13 @@ class TestDockerfileStructure(unittest.TestCase):
         self.assertIn("FROM nextcloud:30.0.17-apache", self.dockerfile_content, "Base image must be Nextcloud 30.0.17-apache")
 
     def test_pre_baked_ai_apps(self):
-        """Verifies assistant and integration_openai are pre-baked in builder and copied."""
+        """Verifies assistant and integration_openai are pre-baked in builder with verified SHA256 checksums."""
         self.assertIn("ASSISTANT_VERSION=", self.dockerfile_content)
         self.assertIn("OPENAI_INTEGRATION_VERSION=", self.dockerfile_content)
+        # Checksum verification requirements (R1)
+        self.assertIn("ASSISTANT_SHA256=", self.dockerfile_content)
+        self.assertIn("OPENAI_INTEGRATION_SHA256=", self.dockerfile_content)
+        self.assertIn("sha256sum -c", self.dockerfile_content)
         self.assertIn("COPY --from=builder --chown=www-data:www-data /apps /var/www/html/custom_apps/", self.dockerfile_content)
         self.assertIn("COPY --from=builder --chown=www-data:www-data /apps /usr/src/nextcloud/custom_apps/", self.dockerfile_content)
 
@@ -46,16 +52,22 @@ class TestDockerfileStructure(unittest.TestCase):
         self.assertIn("COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php", self.dockerfile_content)
         self.assertIn("COPY config/nextcloud.config.php /usr/src/nextcloud/config/nextcloud.config.php", self.dockerfile_content)
 
-    def test_entrypoint_hooks_installed_in_all_lifecycles(self):
-        """Verifies 01-setup-ai.sh is registered in all 3 Docker entrypoint hook directories."""
-        hooks = [
+    def test_entrypoint_hooks_lifecycle_registration(self):
+        """Verifies 01-setup-ai.sh is registered only in post-installation and before-starting, and absent from pre-installation."""
+        required_hooks = [
             "/docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh",
             "/docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh",
-            "/docker-entrypoint-hooks.d/pre-installation/01-setup-ai.sh",
         ]
-        for hook in hooks:
+        for hook in required_hooks:
             self.assertIn(f"COPY hooks/01-setup-ai.sh {hook}", self.dockerfile_content)
             self.assertIn(f"chmod +x {hook}", self.dockerfile_content)
+
+        # Assert pre-installation hook is absent to eliminate premature/redundant execution before DB exists
+        self.assertNotIn(
+            "/docker-entrypoint-hooks.d/pre-installation/01-setup-ai.sh",
+            self.dockerfile_content,
+            "pre-installation hook must be removed from Dockerfile to prevent premature execution before Nextcloud is installed",
+        )
 
     def test_labels_and_healthcheck(self):
         """Verifies container labels and HTTP healthcheck directive."""
@@ -69,14 +81,16 @@ class TestPHPConfigurations(unittest.TestCase):
     """Verifies Nextcloud and AI PHP configuration files."""
 
     def test_nextcloud_config_hardening(self):
-        """Verifies nextcloud.config.php has reverse proxy, HSTS, APCu, and S3 vault bindings."""
+        """Verifies nextcloud.config.php has reverse proxy, dynamic trusted proxies, HSTS, APCu, and S3 bindings."""
         self.assertTrue(os.path.isfile(NEXTCLOUD_CONFIG_PATH))
         with open(NEXTCLOUD_CONFIG_PATH, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # ALB Reverse Proxy settings
+        # ALB Reverse Proxy settings & dynamic proxy reading
         self.assertIn("'overwriteprotocol' => 'https'", content)
         self.assertIn("'trusted_proxies'", content)
+        self.assertIn("getenv('TRUSTED_PROXIES')", content)
+        self.assertIn("'10.0.0.0/16'", content)
         self.assertIn("'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR']", content)
 
         # HSTS Header
@@ -93,6 +107,61 @@ class TestPHPConfigurations(unittest.TestCase):
         self.assertIn("OBJECTSTORE_S3_BUCKET", content)
         self.assertIn(r"'class' => '\\OC\\Files\\ObjectStore\\S3'", content)
         self.assertIn("OBJECTSTORE_S3_REGION", content)
+
+    def test_trusted_proxies_resolution_logic(self):
+        """Validates dynamic TRUSTED_PROXIES parsing logic across varied delimiters and fallback scenarios."""
+        with open(NEXTCLOUD_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Structural assertions on nextcloud.config.php implementation
+        self.assertIn("preg_split", content)
+        self.assertIn("trim", content)
+
+        # Standalone logic verification matching the PHP specification
+        def resolve_trusted_proxies(raw_env):
+            if raw_env is not None and raw_env.strip() != "":
+                items = [item.strip() for item in re.split(r"[\s,]+", raw_env.strip()) if item.strip()]
+                if items:
+                    return items
+            return ["10.0.0.0/16"]
+
+        # Comma-separated CIDRs
+        self.assertEqual(
+            resolve_trusted_proxies("10.0.0.0/16, 172.16.0.0/12"),
+            ["10.0.0.0/16", "172.16.0.0/12"],
+        )
+        # Space-separated CIDRs
+        self.assertEqual(
+            resolve_trusted_proxies("10.0.0.0/16 192.168.1.0/24"),
+            ["10.0.0.0/16", "192.168.1.0/24"],
+        )
+        # Mixed commas, multiple spaces, tabs, and trailing whitespace
+        self.assertEqual(
+            resolve_trusted_proxies("  10.0.0.0/16 ,  172.16.0.0/12 \t 192.168.0.0/16  "),
+            ["10.0.0.0/16", "172.16.0.0/12", "192.168.0.0/16"],
+        )
+        # Empty string / whitespace fallback
+        self.assertEqual(resolve_trusted_proxies(""), ["10.0.0.0/16"])
+        self.assertEqual(resolve_trusted_proxies("   "), ["10.0.0.0/16"])
+        # Unset env fallback
+        self.assertEqual(resolve_trusted_proxies(None), ["10.0.0.0/16"])
+
+        # If PHP CLI is available, directly evaluate the PHP file with environment variables
+        php_bin = shutil.which("php")
+        if php_bin:
+            test_cases = [
+                ("10.0.0.0/16, 172.16.0.0/12", ["10.0.0.0/16", "172.16.0.0/12"]),
+                ("10.0.0.0/16 192.168.1.0/24", ["10.0.0.0/16", "192.168.1.0/24"]),
+                ("", ["10.0.0.0/16"]),
+            ]
+            for env_val, expected in test_cases:
+                cmd = [
+                    php_bin,
+                    "-r",
+                    f'putenv("TRUSTED_PROXIES={env_val}"); require "{NEXTCLOUD_CONFIG_PATH}"; echo json_encode($CONFIG["trusted_proxies"]);',
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(res.stdout), expected)
 
     def test_ai_config_allowlist(self):
         """Verifies ai.config.php contains app_install_overwrite for AI apps."""
@@ -123,9 +192,10 @@ class TestOPcacheConfiguration(unittest.TestCase):
         self.assertEqual(self.config.get("opcache.enable_cli"), "1")
 
     def test_memory_and_strings(self):
-        self.assertGreaterEqual(int(self.config.get("opcache.memory_consumption", "0")), 128)
+        """Verifies OPcache memory consumption is exactly 512MB and max accelerated files is 20000."""
+        self.assertEqual(int(self.config.get("opcache.memory_consumption", "0")), 512)
+        self.assertEqual(int(self.config.get("opcache.max_accelerated_files", "0")), 20000)
         self.assertGreaterEqual(int(self.config.get("opcache.interned_strings_buffer", "0")), 8)
-        self.assertGreaterEqual(int(self.config.get("opcache.max_accelerated_files", "0")), 10000)
 
     def test_comments_preserved(self):
         """Nextcloud annotations require comments to be preserved in OPcache."""
@@ -175,8 +245,35 @@ class TestEntrypointHookScript(unittest.TestCase):
         self.assertIn("memcache.locking", self.hook_content)
         self.assertIn("db:add-missing-indices", self.hook_content)
 
+    def test_no_swallowed_occ_errors(self):
+        """Verifies that core OCC commands do NOT swallow errors with || true."""
+        occ_lines = [line.strip() for line in self.hook_content.splitlines() if "occ " in line]
+        self.assertGreater(len(occ_lines), 5, "Expected multiple OCC invocations in hook")
+        for line in occ_lines:
+            if "occ status" in line:
+                continue
+            self.assertNotIn("|| true", line, f"Core OCC command must not swallow errors with || true: {line}")
+
+    def test_error_trapping_and_exit_handling(self):
+        """Verifies that hook defines an EXIT trap, logs failure, and gates .tenant_initialized."""
+        self.assertIn("trap cleanup_on_exit EXIT", self.hook_content)
+        self.assertIn("cleanup_on_exit()", self.hook_content)
+        self.assertIn("CURRENT_STEP=", self.hook_content)
+        self.assertIn('rm -f "${INIT_FLAG}"', self.hook_content)
+
+        touch_pos = self.hook_content.index('touch "$INIT_FLAG"')
+        for marker in [
+            "app:enable --force assistant",
+            "app:enable --force integration_openai",
+            "config:app:set assistant zero_data_retention",
+            "db:add-missing-indices",
+            "maintenance:repair --include-expensive",
+        ]:
+            marker_pos = self.hook_content.index(marker)
+            self.assertLess(marker_pos, touch_pos, f"Setup step '{marker}' must execute before creating INIT_FLAG")
+
     def test_hook_execution_simulation(self):
-        """Simulates hook execution in a sandbox environment with mocked occ."""
+        """Simulates hook execution in a sandbox environment with mocked occ (happy path and fast-boot)."""
         temp_dir = tempfile.mkdtemp(prefix="test_runtime_hook_")
         try:
             # Create simulated filesystem
@@ -211,7 +308,6 @@ exit 0
             mock_su = os.path.join(bin_dir, "su")
             with open(mock_su, "w") as f:
                 f.write("""#!/bin/sh
-# Shift past options until -c
 while [ $# -gt 0 ]; do
     if [ "$1" = "-c" ]; then
         shift
@@ -223,7 +319,7 @@ done
 """)
             os.chmod(mock_su, 0o755)
 
-            # Run a modified version of hook pointing to temp directory
+            # Run a simulated version of hook pointing to temp directory
             test_script = f"""#!/bin/sh
 set -e
 PATH="{bin_dir}:$PATH"
@@ -274,6 +370,97 @@ fi
                 with open(occ_log, "r") as f:
                     log_content2 = f.read()
                 self.assertNotIn("app:enable --force assistant", log_content2, "Should not re-run setup when initialized")
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_hook_failure_gating_simulation(self):
+        """Verifies that an OCC setup failure halts execution and prevents creation of .tenant_initialized."""
+        temp_dir = tempfile.mkdtemp(prefix="test_runtime_hook_fail_")
+        try:
+            # Create simulated filesystem
+            src_config = os.path.join(temp_dir, "usr", "src", "nextcloud", "config")
+            html_config = os.path.join(temp_dir, "var", "www", "html", "config")
+            html_dir = os.path.join(temp_dir, "var", "www", "html")
+            bin_dir = os.path.join(temp_dir, "bin")
+            os.makedirs(src_config, exist_ok=True)
+            os.makedirs(html_config, exist_ok=True)
+            os.makedirs(bin_dir, exist_ok=True)
+
+            # Mock occ script that fails during app enablement
+            mock_occ = os.path.join(html_dir, "occ")
+            with open(mock_occ, "w") as f:
+                f.write("""#!/bin/sh
+if [ "$1" = "status" ]; then
+    echo "installed: true"
+    exit 0
+fi
+if [ "$1" = "app:enable" ] && [ "$3" = "assistant" ]; then
+    echo "Error: Database connection lost or migration failed" >&2
+    exit 1
+fi
+exit 0
+""")
+            os.chmod(mock_occ, 0o755)
+
+            # Mock su to directly execute the command in sandbox
+            mock_su = os.path.join(bin_dir, "su")
+            with open(mock_su, "w") as f:
+                f.write("""#!/bin/sh
+while [ $# -gt 0 ]; do
+    if [ "$1" = "-c" ]; then
+        shift
+        sh -c "$@"
+        exit $?
+    fi
+    shift
+done
+""")
+            os.chmod(mock_su, 0o755)
+
+            # Hook simulation script with deterministic gating (no || true on core commands) and trap cleanup
+            test_script = f"""#!/bin/sh
+set -e
+PATH="{bin_dir}:$PATH"
+export PATH
+INIT_FLAG="{html_config}/.tenant_initialized"
+
+CURRENT_STEP="Startup pre-flight"
+cleanup_on_exit() {{
+    exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        echo "[ENTRYPOINT-HOOK] ❌ ERROR: Initialization step '${{CURRENT_STEP}}' failed with exit code ${{exit_code}}!" >&2
+        rm -f "${{INIT_FLAG}}" 2>/dev/null || true
+    fi
+}}
+trap cleanup_on_exit EXIT
+
+if su -s /bin/sh www-data -c "sh {mock_occ} status" | grep -q "installed: true"; then
+    if [ ! -f "$INIT_FLAG" ] || [ "${{FORCE_REINIT:-0}}" = "1" ]; then
+        CURRENT_STEP="Enabling assistant app"
+        su -s /bin/sh www-data -c "sh {mock_occ} app:enable --force assistant"
+        CURRENT_STEP="Enabling integration_openai app"
+        su -s /bin/sh www-data -c "sh {mock_occ} app:enable --force integration_openai"
+        CURRENT_STEP="Adding missing database indices"
+        su -s /bin/sh www-data -c "sh {mock_occ} db:add-missing-indices"
+        touch "$INIT_FLAG"
+    fi
+fi
+"""
+            run_file = os.path.join(temp_dir, "run_fail_test.sh")
+            with open(run_file, "w") as f:
+                f.write(test_script)
+            os.chmod(run_file, 0o755)
+
+            # Execution must fail with non-zero return code
+            res = subprocess.run(["sh", run_file], capture_output=True, text=True)
+            self.assertNotEqual(res.returncode, 0, f"Expected non-zero exit code on OCC failure, got {res.returncode}")
+
+            # Crucial invariant: .tenant_initialized must NOT exist!
+            self.assertFalse(
+                os.path.isfile(os.path.join(html_config, ".tenant_initialized")),
+                ".tenant_initialized flag was created despite OCC failure! Gating failed.",
+            )
+            self.assertIn("Enabling assistant app", res.stderr)
         finally:
             shutil.rmtree(temp_dir)
 

@@ -6,20 +6,36 @@
 # ==============================================================================
 set -e
 
+INIT_FLAG="/var/www/html/config/.tenant_initialized"
+
+# Error trap handler for deterministic failure logging and gating
+CURRENT_STEP="Startup pre-flight"
+cleanup_on_exit() {
+    exit_code=$?
+    if [ "$exit_code" -ne 0 ]; then
+        echo "[ENTRYPOINT-HOOK] ❌ ERROR: Initialization step '${CURRENT_STEP}' failed with exit code ${exit_code}!" >&2
+        echo "[ENTRYPOINT-HOOK] ❌ Halting execution. Tenant initialization aborted; .tenant_initialized was not created." >&2
+        rm -f "${INIT_FLAG}" 2>/dev/null
+    fi
+}
+trap cleanup_on_exit EXIT
+
 echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and configuration..."
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
 # ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Ensuring data directory"
 mkdir -p /var/www/html/data
 if [ ! -f /var/www/html/data/.ncdata ]; then
     echo "# Nextcloud data directory" > /var/www/html/data/.ncdata
 fi
-chown -R www-data:www-data /var/www/html/data 2>/dev/null || true
+chown -R www-data:www-data /var/www/html/data 2>/dev/null || :
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
 # ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Seeding modular configs"
 mkdir -p /var/www/html/config
 if [ -d /usr/src/nextcloud/config ]; then
     for cfg in /usr/src/nextcloud/config/*.config.php; do
@@ -28,7 +44,7 @@ if [ -d /usr/src/nextcloud/config ]; then
             if [ ! -f "$target" ]; then
                 echo "[ENTRYPOINT-HOOK] Seeding $(basename "$cfg") to EFS config directory..."
                 cp "$cfg" "$target"
-                chown www-data:www-data "$target" 2>/dev/null || true
+                chown www-data:www-data "$target" 2>/dev/null || :
             fi
         fi
     done
@@ -37,6 +53,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # 0.1 AUTO-PROVISION CONFIG.PHP IF NOT PRESENT
 # ──────────────────────────────────────────────────────────────────────────
+CURRENT_STEP="Auto-provisioning config.php check"
 if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
     echo "[ENTRYPOINT-HOOK] Initializing /var/www/html/config/config.php with PostgreSQL bindings..."
     mkdir -p /var/www/html/config
@@ -73,49 +90,62 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # 1. OPTIMIZED INITIALIZATION VIA PERSISTENT EFS FLAG
 # ──────────────────────────────────────────────────────────────────────────
-INIT_FLAG="/var/www/html/config/.tenant_initialized"
-
+CURRENT_STEP="Checking Nextcloud installation status"
 if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -q "installed: true"; then
     if [ ! -f "$INIT_FLAG" ] || [ "${FORCE_REINIT:-0}" = "1" ]; then
         echo "[ENTRYPOINT-HOOK] Initializing tenant configuration & activating pre-baked AI apps..."
 
         # Enable AI Apps
-        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force assistant" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force integration_openai" || true
+        CURRENT_STEP="Enabling assistant app"
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force assistant"
+
+        CURRENT_STEP="Enabling integration_openai app"
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force integration_openai"
 
         # Configure Assistant guardrails (Zero Data Retention)
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant enabled --value=yes" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant zero_data_retention --value=1" || true
+        CURRENT_STEP="Configuring assistant guardrails"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant enabled --value=yes"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant zero_data_retention --value=1"
 
         # Configure External AI Provider if explicitly configured via environment
         AI_ENDPOINT="${AI_API_URL:-${OPENAI_API_URL:-}}"
         if [ -n "${AI_ENDPOINT}" ]; then
             AI_KEY="${AI_API_KEY:-${OPENAI_API_KEY:-}}"
             echo "[ENTRYPOINT-HOOK] Binding AI Provider to ${AI_ENDPOINT}..."
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${AI_ENDPOINT}'" || true
+            CURRENT_STEP="Binding AI provider endpoint"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${AI_ENDPOINT}'"
             if [ -n "${AI_KEY}" ]; then
-                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${AI_KEY}'" || true
+                CURRENT_STEP="Setting AI provider key"
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${AI_KEY}'"
             fi
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1" || true
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1" || true
+            CURRENT_STEP="Enabling AI text processing and assistant features"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1"
         fi
 
         # Optional Redis Distributed Locking (if REDIS_HOST configured)
         if [ -n "${REDIS_HOST}" ]; then
             echo "[ENTRYPOINT-HOOK] Redis detected at ${REDIS_HOST} — configuring distributed locking..."
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set memcache.locking --value='\OC\Memcache\Redis'" || true
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis host --value='${REDIS_HOST}'" || true
-            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis port --value=${REDIS_PORT:-6379} --type=integer" || true
+            CURRENT_STEP="Configuring Redis distributed locking"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set memcache.locking --value='\OC\Memcache\Redis'"
+            CURRENT_STEP="Configuring Redis host"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis host --value='${REDIS_HOST}'"
+            CURRENT_STEP="Configuring Redis port"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set redis port --value=${REDIS_PORT:-6379} --type=integer"
         fi
 
         # Missing database indices & migrations (one-time execution)
         echo "[ENTRYPOINT-HOOK] Adding missing database indices and initial repairs..."
-        su -s /bin/sh www-data -c "php /var/www/html/occ db:add-missing-indices" || true
-        su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive" || true
+        CURRENT_STEP="Adding missing database indices"
+        su -s /bin/sh www-data -c "php /var/www/html/occ db:add-missing-indices"
+
+        CURRENT_STEP="Running maintenance repair"
+        su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive"
 
         # Mark initialization as completed in persistent storage (EFS)
+        CURRENT_STEP="Marking tenant initialization complete"
         touch "$INIT_FLAG"
-        chown www-data:www-data "$INIT_FLAG" 2>/dev/null || true
+        chown www-data:www-data "$INIT_FLAG" 2>/dev/null || :
         echo "[ENTRYPOINT-HOOK] ✅ First-time tenant setup completed and persisted to EFS."
     else
         echo "[ENTRYPOINT-HOOK] ⚡ Tenant already initialized in EFS. Fast-booting container (< 1s)."
@@ -123,8 +153,11 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
 
     # Dynamic CLI URL update if specified at runtime
     if [ -n "${OVERWRITECLIURL}" ]; then
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set overwritecliurl --value='${OVERWRITECLIURL}'" || true
+        CURRENT_STEP="Setting overwritecliurl"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set overwritecliurl --value='${OVERWRITECLIURL}'"
     fi
 else
     echo "[ENTRYPOINT-HOOK] Nextcloud not fully installed yet; hook will execute on next boot or post-installation."
 fi
+
+CURRENT_STEP="Completed successfully"
