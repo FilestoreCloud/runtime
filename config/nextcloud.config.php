@@ -16,8 +16,9 @@ $CONFIG = [
 
     // ── HTTPS / Reverse-Proxy ───────────────────────────────────────────────
     // The ALB terminates TLS and forwards HTTP to the Fargate container.
-    // These tell Nextcloud to treat incoming requests as HTTPS.
-    'overwriteprotocol' => 'https',
+    // 'overwriteprotocol' => 'https' (Default production setting; supports dynamic OVERWRITEPROTOCOL override)
+    'overwriteprotocol' => (getenv('OVERWRITEPROTOCOL') !== false && getenv('OVERWRITEPROTOCOL') !== '') ? getenv('OVERWRITEPROTOCOL') : 'https',
+    'overwrite.cli.url' => (getenv('OVERWRITECLIURL') !== false && getenv('OVERWRITECLIURL') !== '') ? getenv('OVERWRITECLIURL') : 'http://localhost',
 
     // ── Default Theme & White-Label ─────────────────────────────────────────
     'theme'             => 'storix',

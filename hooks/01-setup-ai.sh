@@ -67,15 +67,34 @@ if [ -d /usr/src/nextcloud/themes/storix ] && [ ! -d /var/www/html/themes/storix
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# 0.1 AUTO-PROVISION CONFIG.PHP IF NOT PRESENT
+# 0.1 AUTO-PROVISION CONFIG.PHP IF DATABASE ALREADY INITIALIZED
 # ──────────────────────────────────────────────────────────────────────────
 CURRENT_STEP="Auto-provisioning config.php check"
 if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
-    echo "[ENTRYPOINT-HOOK] Initializing /var/www/html/config/config.php with PostgreSQL bindings..."
-    mkdir -p /var/www/html/config
-    INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
-    SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
-    cat <<EOF > /var/www/html/config/config.php
+    DB_INITIALIZED=$(php -r '
+        $host = getenv("POSTGRES_HOST");
+        $db = getenv("POSTGRES_DB") ?: "nextcloud";
+        $user = getenv("POSTGRES_USER") ?: "nextcloud";
+        $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        try {
+            $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
+            if ($stmt && $stmt->fetch()) {
+                echo "1";
+            } else {
+                echo "0";
+            }
+        } catch (Exception $e) {
+            echo "0";
+        }
+    ' 2>/dev/null || echo "0")
+
+    if [ "$DB_INITIALIZED" = "1" ]; then
+        echo "[ENTRYPOINT-HOOK] Database already initialized. Restoring /var/www/html/config/config.php with PostgreSQL bindings..."
+        mkdir -p /var/www/html/config
+        INSTANCE_ID="oc$(head -c 16 /dev/urandom 2>/dev/null | md5sum | head -c 10 || echo "inst$(date +%s)")"
+        SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
+        cat <<EOF > /var/www/html/config/config.php
 <?php
 \$CONFIG = array (
   'instanceid' => '${INSTANCE_ID}',
@@ -98,8 +117,11 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
   'installed' => true,
 );
 EOF
-    chown -R www-data:www-data /var/www/html/config
-    echo "[ENTRYPOINT-HOOK] config.php successfully provisioned with installed=true."
+        chown -R www-data:www-data /var/www/html/config
+        echo "[ENTRYPOINT-HOOK] config.php successfully restored with installed=true."
+    else
+        echo "[ENTRYPOINT-HOOK] Database not yet initialized. Skipping config.php generation to allow official Nextcloud maintenance:install to run."
+    fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
