@@ -24,7 +24,7 @@ cd "${REPO_ROOT}"
 # 1. Hadolint Dockerfile Linting
 echo -e "\n${BLUE}[1/4] Running Dockerfile Linting (Hadolint)...${NC}"
 if command -v hadolint >/dev/null 2>&1; then
-    hadolint Dockerfile --config .hadolint.yaml
+    hadolint Dockerfile --config .devsecops/.hadolint.yaml
     echo -e "${GREEN}✓ Dockerfile passed Hadolint inspection.${NC}"
 else
     echo -e "${YELLOW}ℹ hadolint not found on PATH; skipping local lint.${NC}"
@@ -46,7 +46,7 @@ python3 -m unittest discover -s tests -v
 # 4. Trivy Security & Misconfiguration Scan
 echo -e "\n${BLUE}[4/4] Running Security & Misconfig Scan (Trivy)...${NC}"
 if command -v trivy >/dev/null 2>&1; then
-    trivy config . --config .trivy.yaml
+    trivy config . --config .devsecops/.trivy.yaml
     echo -e "${GREEN}✓ Assets passed Trivy security & configuration audit.${NC}"
 else
     echo -e "${YELLOW}ℹ trivy not found on PATH; skipping local security scan.${NC}"
