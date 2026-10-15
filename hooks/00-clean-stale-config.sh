@@ -3,35 +3,34 @@ set -e
 
 echo "[PRE-INSTALL] Checking storage configuration before initial installation..."
 
-# Only purge config.php if the database is actually uninitialized.
-# If database is already initialized (e.g. oc_users exists), we must preserve config.php!
-if [ -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
-    DB_INITIALIZED=$(php -r '
+# Note: pre-installation hooks ONLY run when entrypoint.sh has decided to perform a fresh install
+# (i.e. installed_version == 0.0.0.0).
+# If the database already has oc_users but config.php is missing or uninstalled,
+# maintenance:install would fail with 'The Login is already being used'.
+# We must reset the public schema in PostgreSQL so fresh install succeeds without collision.
+if [ -n "${POSTGRES_HOST:-}" ]; then
+    php -r '
         $host = getenv("POSTGRES_HOST");
         $db = getenv("POSTGRES_DB") ?: "nextcloud";
         $user = getenv("POSTGRES_USER") ?: "nextcloud";
         $pass = getenv("POSTGRES_PASSWORD") ?: "";
-        if (!$host) { echo "0"; exit; }
+        if (!$host) { exit(0); }
         try {
             $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
             $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
             if ($stmt && $stmt->fetch()) {
-                echo "1";
-            } else {
-                echo "0";
+                echo "[PRE-INSTALL] ⚠️ Found orphaned tables from prior failed installation. Resetting public schema...\n";
+                $pdo->exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+                echo "[PRE-INSTALL] Public schema reset successfully.\n";
             }
         } catch (Exception $e) {
-            echo "0";
+            echo "[PRE-INSTALL] DB check note: " . $e->getMessage() . "\n";
         }
-    ' 2>/dev/null || echo "0")
+    ' 2>/dev/null || :
+fi
 
-    if [ "$DB_INITIALIZED" = "0" ]; then
-        echo "[PRE-INSTALL] ⚠️ Database is empty but stale config.php exists on persistent storage. Purging to allow fresh installation..."
-        rm -f /var/www/html/config/config.php
-        rm -f /var/www/html/config/.tenant_initialized
-    else
-        echo "[PRE-INSTALL] Database is already initialized. Preserving existing configuration."
-    fi
+if [ -f /var/www/html/config/.tenant_initialized ]; then
+    rm -f /var/www/html/config/.tenant_initialized
 fi
 
 echo "[PRE-INSTALL] Storage verification completed."
