@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Git Hook: pre-push
-# Purpose: Guard protected branches against accidental direct or force pushes
+# Purpose: Guard protected branches against accidental direct pushes,
+#          and execute complete automated test suite & security scans
+#          before code is uploaded to remote repository.
 # ==============================================================================
 
 set -euo pipefail
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
 source "$HOOK_DIR/helpers/colors.sh"
 source "$HOOK_DIR/helpers/git-env.sh"
 
@@ -20,16 +23,16 @@ fi
 
 log_step "Checking pre-push constraints for remote: $REMOTE ($URL)..."
 
-# Read standard input for ref updates: <local-ref> <local-sha> <remote-ref> <remote-sha>
+# ------------------------------------------------------------------------------
+# 1. Protected Branch Guard
+# ------------------------------------------------------------------------------
 while read -r local_ref local_sha remote_ref remote_sha; do
-  # Skip branch deletion
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     continue
   fi
 
   remote_branch=$(echo "$remote_ref" | sed 's#^refs/heads/##')
 
-  # Check if pushing to protected branch
   if is_protected_branch "$remote_branch"; then
     if [ "${ALLOW_DIRECT_PUSH:-0}" != "1" ]; then
       log_error "Direct push to protected branch '$remote_branch' is forbidden!"
@@ -40,5 +43,25 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 done
 
-log_success "pre-push validation passed."
+# ------------------------------------------------------------------------------
+# 2. Automated Test & Quality Gate Verification (Local Pre-Push CI)
+# ------------------------------------------------------------------------------
+if [ "${SKIP_TESTS:-0}" != "1" ]; then
+  log_step "Executing pre-push automated verification suite (./tests/run_tests.sh)..."
+  if [ -f "$REPO_ROOT/tests/run_tests.sh" ]; then
+    chmod +x "$REPO_ROOT/tests/run_tests.sh"
+    if ! (cd "$REPO_ROOT" && ./tests/run_tests.sh); then
+      log_error "Pre-push automated tests or security scans failed! Push blocked."
+      printf "\n  ${COLOR_BOLD}Action required:${COLOR_RESET} Fix the failed tests or lint errors before pushing code to remote.\n\n"
+      exit 1
+    fi
+    log_success "Pre-push verification passed: All runtime tests and security scans succeeded."
+  else
+    log_warn "Test runner $REPO_ROOT/tests/run_tests.sh not found; skipping automated suite."
+  fi
+else
+  log_warn "Pre-push test execution skipped by SKIP_TESTS=1"
+fi
+
+log_success "pre-push validation completed successfully. Uploading code to $REMOTE..."
 exit 0
