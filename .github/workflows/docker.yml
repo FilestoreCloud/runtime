@@ -17,12 +17,6 @@ on:
         required: true
         default: true
         type: boolean
-  push:
-    branches:
-      - main
-      - dev
-    tags:
-      - 'v*'
 
 permissions:
   id-token: write   # Required for AWS OIDC authentication
