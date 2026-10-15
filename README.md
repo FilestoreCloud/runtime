@@ -90,3 +90,10 @@ docker run -d -p 8080:80 \
   -e POSTGRES_PASSWORD=testpassword \
   filestore-runtime:latest
 ```
+
+---
+
+## License
+
+Licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) to comply with upstream Nextcloud licensing requirements.
+
