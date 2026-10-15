@@ -10,4 +10,4 @@ severity:
   - CRITICAL
 
 format: table
-ignorefile: .trivyignore
+ignorefile: .devsecops/.trivyignore

@@ -179,4 +179,3 @@ def test_efs_config_drift_sync_invariants():
 
     # Invariant: Legacy wildcard cleanup
     assert "sed" in content and "\\*" in content, "Hook must include legacy wildcard cleanup for pre-existing config.php"
-

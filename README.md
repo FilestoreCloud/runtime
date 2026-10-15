@@ -27,8 +27,11 @@ To solve this, this repository implements a **Golden Image Baking** strategy:
 │   └── 01-setup-ai.sh          # Container initialization hook for AI apps & LiteLLM linking
 ├── .github/
 │   └── workflows/
-│       └── docker.yml          # Automated CI/CD build & push to Amazon ECR
-└── .hadolint.yaml              # Dockerfile linting configuration
+├── .devsecops/
+│   ├── .hadolint.yaml          # Dockerfile linting configuration
+│   ├── .trivy.yaml             # Trivy security scanning configuration
+│   └── .trivyignore            # Trivy vulnerability suppressions
+└── Dockerfile                  # Multi-layer Dockerfile extending nextcloud:30.0.17-apache
 ```
 
 ---
