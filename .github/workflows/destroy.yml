@@ -78,7 +78,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME }}
-          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          aws-region: ${{ vars.AWS_REGION }}
           audience: sts.amazonaws.com
 
       - name: Login to Amazon ECR
@@ -102,7 +102,7 @@ jobs:
 
       - name: Execute ECR Image Purge / Repository Deletion
         env:
-          AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-1' }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
           REPO_NAME: ${{ steps.target.outputs.repo_name }}
           SCOPE: ${{ inputs.scope }}
           TARGET_TAG: ${{ inputs.target_tag }}
@@ -112,7 +112,7 @@ jobs:
           import os, boto3
           from botocore.exceptions import ClientError
 
-          region = os.environ.get('AWS_REGION', 'ap-southeast-1')
+          region = os.environ['AWS_REGION']
           repo_name = os.environ.get('REPO_NAME', 'dev-nextcloud-enterprise')
           scope = os.environ.get('SCOPE', 'all_images')
           target_tag = os.environ.get('TARGET_TAG', '').strip()

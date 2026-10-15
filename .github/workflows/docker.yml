@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
-      ECR_REPOSITORY: ${{ inputs.repository_name || 'dev-nextcloud-enterprise' }}
+      ECR_REPOSITORY: ${{ inputs.repository_name }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
