@@ -3,7 +3,6 @@
 .githook
 .github
 .devsecops
-.pre-commit-config.yaml
 *.md
 *.log
 .DS_Store

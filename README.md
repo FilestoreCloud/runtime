@@ -28,6 +28,7 @@ To solve this, this repository implements a **Golden Image Baking** strategy:
 ├── .github/
 │   └── workflows/
 ├── .devsecops/
+│   ├── .pre-commit-config.yaml # DevSecOps master hook suite
 │   ├── .hadolint.yaml          # Dockerfile linting configuration
 │   ├── .trivy.yaml             # Trivy security scanning configuration
 │   └── .trivyignore            # Trivy vulnerability suppressions

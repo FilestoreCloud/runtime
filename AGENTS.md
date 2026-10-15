@@ -32,9 +32,9 @@ Production-hardened Golden Container Image providing the Nextcloud 30 enterprise
 ├── .github/
 │   └── workflows/
 │       ├── docker.yml          # Automated CI/CD build & push to Amazon ECR
-├── .devsecops/                 # AWS Labs DevSecOps configurations (Ferret Scan, Hadolint, Trivy)
-├── .githook/                   # Git hooks (Conventional Commits, branch protection)
-└── .pre-commit-config.yaml     # DevSecOps linters (Hadolint, Shellcheck, Ferret Scan)
+├── .devsecops/                 # AWS Labs DevSecOps configurations (Ferret Scan, Hadolint, Trivy, Pre-commit)
+│   └── .pre-commit-config.yaml # DevSecOps master hook suite
+└── .githook/                   # Git hooks (Conventional Commits, branch protection)
 ```
 
 ---
@@ -51,7 +51,7 @@ Production-hardened Golden Container Image providing the Nextcloud 30 enterprise
 hadolint Dockerfile --config .devsecops/.hadolint.yaml
 
 # Run complete AWS Labs DevSecOps pre-commit checks
-pre-commit run --all-files
+pre-commit run --config .devsecops/.pre-commit-config.yaml --all-files
 
 # Build container image locally
 docker build -t filestore-runtime:latest .
@@ -89,7 +89,7 @@ docker run -d -p 8080:80 \
 
 Before concluding any implementation or opening a PR:
 
-1. [ ] **Pre-commit:** `pre-commit run --all-files` passes cleanly with zero errors.
+1. [ ] **Pre-commit:** `pre-commit run --config .devsecops/.pre-commit-config.yaml --all-files` passes cleanly with zero errors.
 2. [ ] **Tests:** `./tests/run_tests.sh` passes cleanly with all tests green.
 3. [ ] **Dockerfile:** `hadolint Dockerfile --config .devsecops/.hadolint.yaml` passes cleanly.
 4. [ ] **Build:** Local `docker build` succeeds without warnings.
