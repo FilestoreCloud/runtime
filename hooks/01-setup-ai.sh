@@ -57,6 +57,16 @@ if [ -d /usr/src/nextcloud/config ]; then
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
+# 0.05 SEED STORIX THEME IN MOUNTED EFS /var/www/html/themes
+# ──────────────────────────────────────────────────────────────────────────
+if [ -d /usr/src/nextcloud/themes/storix ] && [ ! -d /var/www/html/themes/storix ]; then
+    echo "[ENTRYPOINT-HOOK] Seeding Storix theme into EFS /var/www/html/themes..."
+    mkdir -p /var/www/html/themes
+    cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/
+    chown -R www-data:www-data /var/www/html/themes/storix 2>/dev/null || :
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
 # 0.1 AUTO-PROVISION CONFIG.PHP IF NOT PRESENT
 # ──────────────────────────────────────────────────────────────────────────
 CURRENT_STEP="Auto-provisioning config.php check"
@@ -146,6 +156,14 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
 
         CURRENT_STEP="Running maintenance repair"
         su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive"
+
+        # Configure Storix Theming & Corporate Branding
+        echo "[ENTRYPOINT-HOOK] Applying default Storix branding and theme..."
+        CURRENT_STEP="Configuring Storix default theming"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming name --value='Storix'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming slogan --value='Enterprise Cloud Storage & AI Platform'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
 
         # Mark initialization as completed in persistent storage (EFS)
         CURRENT_STEP="Marking tenant initialization complete"

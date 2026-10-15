@@ -1,0 +1,49 @@
+/**
+ * Storix Default Theme CSS Overrides
+ * Matches Storix brand identity:
+ * - Primary Color: #1652f0 (Storix Royal Blue)
+ * - Header / Deep Navy: #071736
+ * - Cyan Accent: #0091ff
+ * - Violet Accent: #5a41f8
+ */
+:root {
+    --color-primary: #1652f0;
+    --color-primary-hover: #1245cc;
+    --color-primary-text: #ffffff;
+    --color-primary-element: #1652f0;
+    --color-primary-element-hover: #1245cc;
+    --color-primary-element-text: #ffffff;
+    --color-header-background: #071736;
+    --color-header-text: #ffffff;
+    --color-header-main-text: #ffffff;
+    --color-loading-light: #1652f0;
+    --color-loading-dark: #071736;
+    --color-main-text: #071736;
+    --color-text-maxcontrast: #071736;
+}
+
+#header {
+    background-color: #071736 !important;
+    border-bottom: 2px solid #1652f0 !important;
+}
+
+#body-login {
+    background: radial-gradient(circle at 50% 30%, #1652f0 0%, #071736 100%) !important;
+}
+
+.primary,
+button.primary,
+input[type="submit"].primary,
+.button.primary {
+    background-color: #1652f0 !important;
+    border-color: #1652f0 !important;
+    color: #ffffff !important;
+}
+
+.primary:hover,
+button.primary:hover,
+input[type="submit"].primary:hover,
+.button.primary:hover {
+    background-color: #1245cc !important;
+    border-color: #1245cc !important;
+}
