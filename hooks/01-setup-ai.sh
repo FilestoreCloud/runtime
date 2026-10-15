@@ -26,9 +26,9 @@ echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and confi
 # 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
 # ──────────────────────────────────────────────────────────────────────────
 CURRENT_STEP="Ensuring data directory"
-mkdir -p /var/www/html/data
+mkdir -p /var/www/html/data 2>/dev/null || :
 if [ ! -f /var/www/html/data/.ncdata ]; then
-    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata
+    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
 fi
 chown -R www-data:www-data /var/www/html/data 2>/dev/null || :
 

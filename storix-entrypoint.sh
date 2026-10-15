@@ -13,7 +13,9 @@ if [ -f /var/www/html/config/config.php ]; then
         rsync -a --exclude='/config' /usr/src/nextcloud/ /var/www/html/
     fi
     cp /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
-    chown -R www-data:www-data /var/www/html/version.php 2>/dev/null || :
 fi
+
+mkdir -p /var/www/html/data
+chown -R www-data:www-data /var/www/html
 
 exec /entrypoint.sh "$@"
