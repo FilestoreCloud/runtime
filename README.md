@@ -1,4 +1,11 @@
-# FilestoreCloud Runtime Image
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/storix-logo-white.png">
+    <img alt="Storix Logo" src="docs/images/storix-logo.png" width="360">
+  </picture>
+</p>
+
+# Storix Runtime Image
 
 Production-hardened enterprise container runtime with pre-baked AI assistant and Amazon Bedrock integration for AWS ECS Fargate.
 

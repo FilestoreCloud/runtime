@@ -43,10 +43,13 @@ COPY config/opcache.ini /usr/local/etc/php/conf.d/opcache-recommended.ini
 # Copy Nextcloud modular configurations
 COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
 COPY config/nextcloud.config.php /usr/src/nextcloud/config/nextcloud.config.php
-RUN mkdir -p /var/www/html/config \
+# Copy Storix custom theme
+COPY themes/storix /usr/src/nextcloud/themes/storix/
+RUN mkdir -p /var/www/html/config /var/www/html/themes \
     && cp /usr/src/nextcloud/config/ai.config.php /var/www/html/config/ai.config.php \
     && cp /usr/src/nextcloud/config/nextcloud.config.php /var/www/html/config/nextcloud.config.php \
-    && chown -R www-data:www-data /usr/src/nextcloud/config /var/www/html/config
+    && cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/storix \
+    && chown -R www-data:www-data /usr/src/nextcloud/config /var/www/html/config /usr/src/nextcloud/themes /var/www/html/themes
 
 # Copy entrypoint hooks
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh

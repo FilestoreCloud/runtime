@@ -19,6 +19,9 @@ $CONFIG = [
     // These tell Nextcloud to treat incoming requests as HTTPS.
     'overwriteprotocol' => 'https',
 
+    // ── Default Theme & White-Label ─────────────────────────────────────────
+    'theme'             => 'storix',
+
     // ── Trusted Domains ─────────────────────────────────────────────────────
     // Dynamic resolution from NEXTCLOUD_TRUSTED_DOMAINS environment variable
     // to prevent Host Header injection attacks (bare wildcard '*' is strictly forbidden).
