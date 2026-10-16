@@ -16,8 +16,9 @@ $CONFIG = [
 
     // ── HTTPS / Reverse-Proxy ───────────────────────────────────────────────
     // The ALB terminates TLS and forwards HTTP to the Fargate container.
-    // These tell Nextcloud to treat incoming requests as HTTPS.
-    'overwriteprotocol' => 'https',
+    // 'overwriteprotocol' => 'https' (Default production setting; supports dynamic OVERWRITEPROTOCOL override)
+    'overwriteprotocol' => (getenv('OVERWRITEPROTOCOL') !== false && getenv('OVERWRITEPROTOCOL') !== '') ? getenv('OVERWRITEPROTOCOL') : 'https',
+    'overwrite.cli.url' => (getenv('OVERWRITECLIURL') !== false && getenv('OVERWRITECLIURL') !== '') ? getenv('OVERWRITECLIURL') : 'http://localhost',
 
     // ── Default Theme & White-Label ─────────────────────────────────────────
     'theme'             => 'storix',
@@ -95,3 +96,19 @@ if ($s3Bucket) {
         ],
     ];
 }
+
+// ── Redis Distributed Cache & File Locking (ElastiCache) ───────────────────
+$redisHost = getenv('REDIS_HOST') ?: getenv('REDIS_ENDPOINT');
+if ($redisHost && trim($redisHost) !== '') {
+    $CONFIG['memcache.distributed'] = '\OC\Memcache\Redis';
+    $CONFIG['memcache.locking'] = '\OC\Memcache\Redis';
+    $CONFIG['redis'] = [
+        'host' => trim($redisHost),
+        'port' => (int)(getenv('REDIS_PORT') ?: 6379),
+        'timeout' => 1.5,
+    ];
+    if (getenv('REDIS_PASSWORD')) {
+        $CONFIG['redis']['password'] = getenv('REDIS_PASSWORD');
+    }
+}
+

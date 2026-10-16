@@ -1,0 +1,28 @@
+name: Runtime CI Quality Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: runtime-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-runtime:
+    name: Runtime Checks (Hadolint, ShellCheck, Python Unit Tests, Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run Test Suite
+        run: ./tests/run_tests.sh
