@@ -66,6 +66,9 @@ $CONFIG = [
     // For multi-replica ECS tasks, replace with Redis (ElastiCache) — see hook.
     'memcache.local' => '\OC\Memcache\APCu',
 
+    // ── Logging to stderr (Docker / CloudWatch) ──────────────────────────────
+    'log_type' => 'errorlog',
+
     // ── Background Jobs / Maintenance Window ───────────────────────────────
     // 2 = 2:00 AM UTC. Resource-intensive cron jobs will only start in this window.
     'maintenance_window_start' => 2,

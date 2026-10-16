@@ -96,21 +96,29 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
         SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
         cat <<EOF > /var/www/html/config/config.php
 <?php
+\$rawDomains = '${NEXTCLOUD_TRUSTED_DOMAINS:-}';
+\$trusted = array('localhost', '127.0.0.1');
+if (!empty(\$rawDomains)) {
+    foreach (preg_split('/[\s,]+/', \$rawDomains) as \$d) {
+        \$d = trim(\$d);
+        if (\$d !== '' && \$d !== '*' && !in_array(\$d, \$trusted, true)) {
+            \$trusted[] = \$d;
+        }
+    }
+}
 \$CONFIG = array (
   'instanceid' => '${INSTANCE_ID}',
   'passwordsalt' => 'salt_${INSTANCE_ID}',
   'secret' => '${SECRET}',
-  'trusted_domains' => array (
-    0 => 'localhost',
-    1 => '127.0.0.1',
-  ),
+  'trusted_domains' => \$trusted,
   'datadirectory' => '/var/www/html/data',
   'dbtype' => 'pgsql',
   'version' => '30.0.17.2',
-  'overwrite.cli.url' => 'http://localhost',
+  'overwrite.cli.url' => (getenv('OVERWRITECLIURL') ?: 'http://localhost'),
+  'overwriteprotocol' => (getenv('OVERWRITEPROTOCOL') ?: 'https'),
   'dbname' => '${POSTGRES_DB:-nextcloud}',
   'dbhost' => '${POSTGRES_HOST}',
-  'dbport' => '',
+  'dbport' => '5432',
   'dbtableprefix' => 'oc_',
   'dbuser' => '${POSTGRES_USER:-nextcloud}',
   'dbpassword' => '${POSTGRES_PASSWORD:-}',
