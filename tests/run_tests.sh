@@ -43,11 +43,22 @@ done
 echo -e "\n${BLUE}[3/4] Running Python Runtime Test Suite...${NC}"
 python3 -m unittest discover -s tests -v
 
-# 4. Trivy Security & Misconfiguration Scan
+# 4. PHP Configuration Syntax Check (if PHP is available)
+if command -v php >/dev/null 2>&1; then
+    echo -e "\n${BLUE}[*] Checking PHP Config Syntax...${NC}"
+    for php_file in config/*.php; do
+        if [ -f "$php_file" ]; then
+            php -l "$php_file"
+        fi
+    done
+    echo -e "${GREEN}✓ All PHP configuration files passed syntax check.${NC}"
+fi
+
+# 5. Trivy Security & Misconfiguration Scan (Zero High/Critical tolerance)
 echo -e "\n${BLUE}[4/4] Running Security & Misconfig Scan (Trivy)...${NC}"
 if command -v trivy >/dev/null 2>&1; then
-    trivy config . --config .devsecops/.trivy.yaml
-    echo -e "${GREEN}✓ Assets passed Trivy security & configuration audit.${NC}"
+    trivy config . --config .devsecops/.trivy.yaml --exit-code 1 --severity HIGH,CRITICAL
+    echo -e "${GREEN}✓ Assets passed Trivy security & configuration audit (Zero High/Critical findings).${NC}"
 else
     echo -e "${YELLOW}ℹ trivy not found on PATH; skipping local security scan.${NC}"
 fi
