@@ -185,6 +185,20 @@ class TestRuntimeFeatures(unittest.TestCase):
         self.assertNotIn("2 => '*'", content, "Bare wildcard entry must not be present in template")
         self.assertTrue("sed" in content and "\\*" in content, "Hook must include legacy wildcard cleanup for pre-existing config.php")
 
+    def test_redis_caching_and_locking_configuration(self):
+        """Verify nextcloud.config.php contains Redis distributed cache and transactional locking."""
+        cfg_file = CONFIG_DIR / "nextcloud.config.php"
+        self.assertTrue(cfg_file.exists(), "nextcloud.config.php not found")
+        content = cfg_file.read_text(encoding="utf-8")
+
+        self.assertIn("REDIS_HOST", content, "nextcloud.config.php must check REDIS_HOST")
+        self.assertIn(r"'\OC\Memcache\Redis'", content)
+        self.assertIn(r"$CONFIG['memcache.locking']", content)
+        self.assertIn(r"$CONFIG['memcache.distributed']", content)
+        self.assertIn("'port' => (int)(getenv('REDIS_PORT') ?: 6379)", content)
+
+
 
 if __name__ == "__main__":
     unittest.main()
+
