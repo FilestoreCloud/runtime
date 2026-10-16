@@ -52,13 +52,11 @@ RUN mkdir -p /var/www/html/config /var/www/html/themes \
     && chown -R www-data:www-data /usr/src/nextcloud/config /var/www/html/config /usr/src/nextcloud/themes /var/www/html/themes
 
 # Copy entrypoint hooks and wrapper
-COPY hooks/00-clean-stale-config.sh /docker-entrypoint-hooks.d/pre-installation/00-clean-stale-config.sh
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh
 COPY storix-entrypoint.sh /storix-entrypoint.sh
 
-RUN chmod +x /docker-entrypoint-hooks.d/pre-installation/00-clean-stale-config.sh \
-    && chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
+RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
     && chmod +x /storix-entrypoint.sh \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d

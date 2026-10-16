@@ -19,9 +19,13 @@ if [ -n "${POSTGRES_HOST:-}" ]; then
             $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
             $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
             if ($stmt && $stmt->fetch()) {
-                echo "[PRE-INSTALL] ⚠️ Found orphaned tables from prior failed installation. Resetting public schema...\n";
-                $pdo->exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
-                echo "[PRE-INSTALL] Public schema reset successfully.\n";
+                if (getenv("RESET_ORPHANED_DB") === "1" && getenv("ENVIRONMENT_NAME") !== "prod") {
+                    echo "[PRE-INSTALL] ⚠️ RESET_ORPHANED_DB=1: Resetting public schema...\n";
+                    $pdo->exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+                    echo "[PRE-INSTALL] Public schema reset successfully.\n";
+                } else {
+                    echo "[PRE-INSTALL] ℹ️ Existing tables detected in PostgreSQL. Preserving schema data.\n";
+                }
             }
         } catch (Exception $e) {
             echo "[PRE-INSTALL] DB check note: " . $e->getMessage() . "\n";

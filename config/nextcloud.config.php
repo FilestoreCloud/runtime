@@ -96,3 +96,19 @@ if ($s3Bucket) {
         ],
     ];
 }
+
+// ── Redis Distributed Cache & File Locking (ElastiCache) ───────────────────
+$redisHost = getenv('REDIS_HOST') ?: getenv('REDIS_ENDPOINT');
+if ($redisHost && trim($redisHost) !== '') {
+    $CONFIG['memcache.distributed'] = '\OC\Memcache\Redis';
+    $CONFIG['memcache.locking'] = '\OC\Memcache\Redis';
+    $CONFIG['redis'] = [
+        'host' => trim($redisHost),
+        'port' => (int)(getenv('REDIS_PORT') ?: 6379),
+        'timeout' => 1.5,
+    ];
+    if (getenv('REDIS_PASSWORD')) {
+        $CONFIG['redis']['password'] = getenv('REDIS_PASSWORD');
+    }
+}
+

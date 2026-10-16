@@ -30,7 +30,7 @@ mkdir -p /var/www/html/data 2>/dev/null || :
 if [ ! -f /var/www/html/data/.ncdata ]; then
     echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
 fi
-chown -R www-data:www-data /var/www/html/data 2>/dev/null || :
+chown www-data:www-data /var/www/html/data 2>/dev/null || :
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config

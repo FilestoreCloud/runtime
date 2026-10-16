@@ -16,6 +16,6 @@ if [ -f /var/www/html/config/config.php ]; then
 fi
 
 mkdir -p /var/www/html/data
-chown -R www-data:www-data /var/www/html
+chown www-data:www-data /var/www/html/data 2>/dev/null || :
 
 exec /entrypoint.sh "$@"
