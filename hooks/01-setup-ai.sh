@@ -82,7 +82,8 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
         $host = getenv("POSTGRES_HOST");
         $db = getenv("POSTGRES_DB") ?: "nextcloud";
         $user = getenv("POSTGRES_USER") ?: "nextcloud";
-        $sslmode = getenv("PGSSLMODE") ?: "require";
+        $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        $sslmode = getenv("PGSSLMODE") ?: "prefer";
         try {
             $pdo = new PDO("pgsql:host=$host;dbname=$db;sslmode=$sslmode", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
             $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
@@ -141,6 +142,12 @@ if (!empty(\$rawDomains)) {
       'url' => '/custom_apps',
       'writable' => true,
     ),
+  ),
+  'pgsql_ssl' => array (
+    'mode' => (getenv('PGSSLMODE') ?: 'prefer'),
+  ),
+  'dbdriveroptions' => array (
+    \PDO::PGSQL_ATTR_SSL_MODE => (getenv('PGSSLMODE') === 'require' ? \PDO::PGSQL_SSL_MODE_REQUIRE : \PDO::PGSQL_SSL_MODE_PREFER),
   ),
   'installed' => true,
 );

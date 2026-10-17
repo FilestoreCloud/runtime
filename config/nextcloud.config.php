@@ -96,6 +96,12 @@ $CONFIG = [
             'url'      => '/custom_apps',
             'writable' => true,
         ],
+    // ── PostgreSQL SSL In-Transit Encryption ─────────────────────────────────
+    'pgsql_ssl' => [
+        'mode' => (getenv('PGSSLMODE') ?: 'prefer'),
+    ],
+    'dbdriveroptions' => [
+        \PDO::PGSQL_ATTR_SSL_MODE => (getenv('PGSSLMODE') === 'require' ? \PDO::PGSQL_SSL_MODE_REQUIRE : \PDO::PGSQL_SSL_MODE_PREFER),
     ],
 
 ];

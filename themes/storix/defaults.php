@@ -75,4 +75,11 @@ class OC_Theme {
     public function getMailHeaderColor(): string {
         return '#1652f0';
     }
+
+    /**
+     * Product name returned in status.php and API endpoints
+     */
+    public function getProductName(): string {
+        return 'Storix';
+    }
 }
