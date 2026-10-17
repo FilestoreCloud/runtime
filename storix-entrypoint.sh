@@ -8,6 +8,11 @@ if [ -z "${REDIS_HOST:-}" ]; then
     rm -f /usr/local/etc/php/conf.d/redis-session.ini 2>/dev/null || :
 fi
 
+# Ensure all application and configuration directories exist with correct permissions
+mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes
+chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes 2>/dev/null || :
+chmod -R 775 /var/www/html/config /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
+
 # In ECS Fargate, /var/www/html is ephemeral container filesystem while /var/www/html/config is mounted to persistent EFS.
 # If config.php exists but does NOT contain 'installed' => true, it is an incomplete/failed installation: reset it.
 if [ -f /var/www/html/config/config.php ] && ! grep -q "'installed' => true" /var/www/html/config/config.php; then
@@ -15,17 +20,13 @@ if [ -f /var/www/html/config/config.php ] && ! grep -q "'installed' => true" /va
     rm -f /var/www/html/config/config.php
 fi
 
-# Pre-baked core source: zero slow rsync loop at container boot (Cold start < 2.5s)
+# Fast Boot Optimization (< 2.5s cold start):
+# - If config.php exists (Nextcloud already installed on EFS): restore version.php so official entrypoint skips re-install.
+# - If config.php does not exist: ensure version.php is absent so official entrypoint performs clean automated install.
 if [ -f /var/www/html/config/config.php ]; then
-    if [ ! -f /var/www/html/index.php ] && [ -d /usr/src/nextcloud ]; then
-        echo "[STORIX] Ensuring essential entrypoint files are present..."
-        cp -a /usr/src/nextcloud/index.php /usr/src/nextcloud/version.php /usr/src/nextcloud/status.php /var/www/html/ 2>/dev/null || :
-    fi
-    cp /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
+    cp -p /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
+else
+    rm -f /var/www/html/version.php
 fi
-
-mkdir -p /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes
-chown -R www-data:www-data /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes 2>/dev/null || :
-chmod -R 775 /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
 exec /entrypoint.sh "$@"
