@@ -49,6 +49,7 @@ RUN mkdir -p /var/www/html/config /var/www/html/themes \
     && cp /usr/src/nextcloud/config/ai.config.php /var/www/html/config/ai.config.php \
     && cp /usr/src/nextcloud/config/nextcloud.config.php /var/www/html/config/nextcloud.config.php \
     && cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/storix \
+    && cp -a /usr/src/nextcloud/. /var/www/html/ \
     && chown -R www-data:www-data /usr/src/nextcloud /var/www/html
 
 # Copy entrypoint hooks and wrapper
