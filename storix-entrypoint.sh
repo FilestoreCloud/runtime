@@ -28,7 +28,8 @@ if [ -f /var/www/html/config/config.php ]; then
     cp /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
 fi
 
-mkdir -p /var/www/html/data
-chown www-data:www-data /var/www/html/data 2>/dev/null || :
+mkdir -p /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes
+chown -R www-data:www-data /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes 2>/dev/null || :
+chmod -R 775 /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
 exec /entrypoint.sh "$@"

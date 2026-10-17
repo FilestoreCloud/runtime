@@ -32,12 +32,12 @@ echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and confi
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
 # ──────────────────────────────────────────────────────────────────────────
-CURRENT_STEP="Ensuring data directory"
-mkdir -p /var/www/html/data 2>/dev/null || :
+CURRENT_STEP="Ensuring data and app directories"
+mkdir -p /var/www/html/data /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 if [ ! -f /var/www/html/data/.ncdata ]; then
     echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
 fi
-chown www-data:www-data /var/www/html/data 2>/dev/null || :
+chown -R www-data:www-data /var/www/html/data /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
@@ -129,6 +129,19 @@ if (!empty(\$rawDomains)) {
   'dbtableprefix' => 'oc_',
   'dbuser' => '${POSTGRES_USER:-nextcloud}',
   'dbpassword' => '${POSTGRES_PASSWORD:-}',
+  'appstoreenabled' => false,
+  'apps_paths' => array (
+    0 => array (
+      'path' => '/var/www/html/apps',
+      'url' => '/apps',
+      'writable' => false,
+    ),
+    1 => array (
+      'path' => '/var/www/html/custom_apps',
+      'url' => '/custom_apps',
+      'writable' => true,
+    ),
+  ),
   'installed' => true,
 );
 EOF

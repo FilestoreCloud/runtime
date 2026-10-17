@@ -83,6 +83,21 @@ $CONFIG = [
         'integration_openai',
     ],
 
+    // ── Multi-Directory Apps Configuration (Production Hardened) ────────────
+    'appstoreenabled' => false,
+    'apps_paths' => [
+        [
+            'path'     => '/var/www/html/apps',
+            'url'      => '/apps',
+            'writable' => false,
+        ],
+        [
+            'path'     => '/var/www/html/custom_apps',
+            'url'      => '/custom_apps',
+            'writable' => true,
+        ],
+    ],
+
 ];
 
 // ── S3 Primary ObjectStore (Vault) ───────────────────────────────────────────
