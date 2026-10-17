@@ -14,10 +14,19 @@ chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html
 chmod -R 775 /var/www/html/config /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
 # In ECS Fargate, /var/www/html is ephemeral container filesystem while /var/www/html/config is mounted to persistent EFS.
-# If config.php exists but does NOT contain 'installed' => true, it is an incomplete/failed installation: reset it.
-if [ -f /var/www/html/config/config.php ] && ! grep -q "'installed' => true" /var/www/html/config/config.php; then
-    echo "[STORIX] Detected incomplete or broken config.php without installed=true; resetting config.php..."
-    rm -f /var/www/html/config/config.php
+# Sanitize and validate config.php on EFS if present:
+if [ -f /var/www/html/config/config.php ]; then
+    sed -i "/PGSQL_ATTR_SSL_MODE/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/pgsql_ssl/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/dbdriveroptions/d" /var/www/html/config/config.php 2>/dev/null || :
+fi
+
+# If config.php exists but does NOT contain 'installed' => true or fails php lint check: reset it.
+if [ -f /var/www/html/config/config.php ]; then
+    if ! grep -q "'installed' => true" /var/www/html/config/config.php || ! php -l /var/www/html/config/config.php >/dev/null 2>&1; then
+        echo "[STORIX] Detected incomplete or broken config.php; resetting config.php..."
+        rm -f /var/www/html/config/config.php
+    fi
 fi
 
 # Fast Boot Optimization (< 2.5s cold start):

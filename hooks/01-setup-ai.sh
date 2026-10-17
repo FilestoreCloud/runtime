@@ -48,6 +48,9 @@ mkdir -p /var/www/html/config
 # Remove legacy bare wildcard '*' from existing config.php in EFS if present
 if [ -f /var/www/html/config/config.php ]; then
     sed -i.bak "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null && rm -f /var/www/html/config/config.php.bak 2>/dev/null || sed -i "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/PGSQL_ATTR_SSL_MODE/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/pgsql_ssl/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/dbdriveroptions/d" /var/www/html/config/config.php 2>/dev/null || :
 fi
 
 if [ -d /usr/src/nextcloud/config ]; then
@@ -142,12 +145,6 @@ if (!empty(\$rawDomains)) {
       'url' => '/custom_apps',
       'writable' => true,
     ),
-  ),
-  'pgsql_ssl' => array (
-    'mode' => (getenv('PGSSLMODE') ?: 'prefer'),
-  ),
-  'dbdriveroptions' => array (
-    \PDO::PGSQL_ATTR_SSL_MODE => (getenv('PGSSLMODE') === 'require' ? \PDO::PGSQL_SSL_MODE_REQUIRE : \PDO::PGSQL_SSL_MODE_PREFER),
   ),
   'installed' => true,
 );
