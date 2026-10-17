@@ -96,6 +96,8 @@ $CONFIG = [
             'url'      => '/custom_apps',
             'writable' => true,
         ],
+    ],
+
     // ── PostgreSQL SSL In-Transit Encryption ─────────────────────────────────
     'pgsql_ssl' => [
         'mode' => (getenv('PGSSLMODE') ?: 'prefer'),
