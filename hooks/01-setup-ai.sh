@@ -20,6 +20,13 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
+# If REDIS_HOST is empty or unset, ensure Redis session handler and locking are omitted
+if [ -z "${REDIS_HOST:-}" ]; then
+    unset REDIS_HOST
+    unset REDIS_PORT
+    rm -f /usr/local/etc/php/conf.d/redis-session.ini 2>/dev/null || :
+fi
+
 echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and configuration..."
 
 # ──────────────────────────────────────────────────────────────────────────
