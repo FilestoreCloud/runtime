@@ -29,6 +29,34 @@ if [ -f /var/www/html/config/config.php ]; then
     fi
 fi
 
+# Self-healing: If config.php exists on persistent storage but PostgreSQL was recreated (tables missing):
+# Reset config.php so official entrypoint performs clean automated install into the new database.
+if [ -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
+    DB_OK=$(php -r '
+        $host = getenv("POSTGRES_HOST");
+        $db = getenv("POSTGRES_DB") ?: "nextcloud";
+        $user = getenv("POSTGRES_USER") ?: "nextcloud";
+        $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        $sslmode = getenv("PGSSLMODE") ?: "prefer";
+        try {
+            $pdo = new PDO("pgsql:host=$host;dbname=$db;sslmode=$sslmode", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_appconfig'\''");
+            if ($stmt && $stmt->fetch()) {
+                echo "1";
+            } else {
+                echo "0";
+            }
+        } catch (Exception $e) {
+            echo "1";
+        }
+    ' 2>/dev/null || echo "1")
+
+    if [ "$DB_OK" = "0" ]; then
+        echo "[STORIX] PostgreSQL table oc_appconfig missing despite existing config.php (database was recreated). Resetting config.php to allow clean automated install..."
+        rm -f /var/www/html/config/config.php
+    fi
+fi
+
 # Fast Boot Optimization (< 2.5s cold start):
 # - If config.php exists (Nextcloud already installed on EFS): restore version.php so official entrypoint skips re-install.
 # - If config.php does not exist: ensure version.php is absent so official entrypoint performs clean automated install.
