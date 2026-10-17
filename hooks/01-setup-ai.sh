@@ -82,9 +82,9 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
         $host = getenv("POSTGRES_HOST");
         $db = getenv("POSTGRES_DB") ?: "nextcloud";
         $user = getenv("POSTGRES_USER") ?: "nextcloud";
-        $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        $sslmode = getenv("PGSSLMODE") ?: "require";
         try {
-            $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+            $pdo = new PDO("pgsql:host=$host;dbname=$db;sslmode=$sslmode", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
             $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
             if ($stmt && $stmt->fetch()) {
                 echo "1";
