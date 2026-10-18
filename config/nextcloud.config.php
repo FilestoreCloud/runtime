@@ -99,7 +99,7 @@ $CONFIG = [
     ],
 ];
 
-// ── S3 Primary ObjectStore (Vault) ───────────────────────────────────────────
+// ── S3 Primary ObjectStore (Vault) & Direct-to-S3 Transfer ───────────────────
 $s3Bucket = getenv('OBJECTSTORE_S3_BUCKET');
 if ($s3Bucket) {
     $CONFIG['objectstore'] = [
@@ -110,8 +110,11 @@ if ($s3Bucket) {
             'region' => getenv('OBJECTSTORE_S3_REGION') ?: (getenv('AWS_REGION') ?: 'ap-southeast-1'),
             'use_ssl' => (getenv('OBJECTSTORE_S3_SSL') !== 'false'),
             'use_path_style' => (getenv('OBJECTSTORE_S3_USEPATH_STYLE') === 'true'),
+            'upload_part_size' => 52428800, // 50MB Multipart chunking for optimal throughput
         ],
     ];
+    // Enable direct transfer mechanics to bypass PHP streaming bottlenecks
+    $CONFIG['direct_transfer'] = true;
 }
 
 // ── Redis Distributed Cache & File Locking (ElastiCache) ───────────────────
