@@ -219,6 +219,10 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
         su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
         su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
 
+        # Configure background jobs mode to cron (EventBridge dedicated runner)
+        echo "[ENTRYPOINT-HOOK] Setting background jobs mode to cron runner..."
+        su -s /bin/sh www-data -c "php /var/www/html/occ background:cron" 2>/dev/null || :
+
         # Mark initialization as completed in persistent storage (EFS)
         CURRENT_STEP="Marking tenant initialization complete"
         touch "$INIT_FLAG"
