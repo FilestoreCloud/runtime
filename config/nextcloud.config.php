@@ -113,6 +113,9 @@ if ($s3Bucket) {
             'upload_part_size' => 52428800, // 50MB Multipart chunking for optimal throughput
         ],
     ];
+    if (getenv('TENANT_STORAGE_PREFIX') !== false && trim(getenv('TENANT_STORAGE_PREFIX')) !== '') {
+        $CONFIG['objectstore']['arguments']['prefix'] = trim(getenv('TENANT_STORAGE_PREFIX'));
+    }
     // Enable direct transfer mechanics to bypass PHP streaming bottlenecks
     $CONFIG['direct_transfer'] = true;
 }
