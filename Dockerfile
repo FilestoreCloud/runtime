@@ -39,6 +39,7 @@ COPY --from=builder --chown=www-data:www-data /apps /usr/src/nextcloud/custom_ap
 
 # Copy OPcache & PHP optimizations
 COPY config/opcache.ini /usr/local/etc/php/conf.d/opcache-recommended.ini
+COPY config/storix-mpm.conf /etc/apache2/conf-available/storix-mpm.conf
 
 # Copy Nextcloud modular configurations
 COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
@@ -61,6 +62,7 @@ COPY storix-entrypoint.sh /storix-entrypoint.sh
 RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
     && chmod +x /storix-entrypoint.sh \
+    && a2enconf storix-mpm \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d
 
 ENTRYPOINT ["/storix-entrypoint.sh"]
