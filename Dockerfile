@@ -39,17 +39,28 @@ COPY --from=builder --chown=www-data:www-data /apps /usr/src/nextcloud/custom_ap
 
 # Copy OPcache & PHP optimizations
 COPY config/opcache.ini /usr/local/etc/php/conf.d/opcache-recommended.ini
+COPY config/storix-mpm.conf /etc/apache2/conf-available/storix-mpm.conf
 
 # Copy Nextcloud modular configurations
 COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
 COPY config/nextcloud.config.php /usr/src/nextcloud/config/nextcloud.config.php
 # Copy Storix custom theme
 COPY themes/storix /usr/src/nextcloud/themes/storix/
-RUN mkdir -p /var/www/html/config /var/www/html/themes \
+RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/img /var/www/html/core/img \
     && cp /usr/src/nextcloud/config/ai.config.php /var/www/html/config/ai.config.php \
     && cp /usr/src/nextcloud/config/nextcloud.config.php /var/www/html/config/nextcloud.config.php \
     && cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/storix \
-    && chown -R www-data:www-data /usr/src/nextcloud/config /var/www/html/config /usr/src/nextcloud/themes /var/www/html/themes
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/logo-white.png /usr/src/nextcloud/core/img/logo-header.png 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/logo-wide.svg /usr/src/nextcloud/core/img/logo-header.svg 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/logo-white.png /usr/src/nextcloud/core/img/logo.png 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/logo-wide.svg /usr/src/nextcloud/core/img/logo.svg 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/favicon.ico /usr/src/nextcloud/core/img/favicon.ico 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/favicon.png /usr/src/nextcloud/core/img/favicon.png 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/favicon-touch.png /usr/src/nextcloud/core/img/favicon-touch.png 2>/dev/null || : \
+    && cp -r /usr/src/nextcloud/themes/storix/core/img/background.png /usr/src/nextcloud/core/img/background.png 2>/dev/null || : \
+    && cp -a /usr/src/nextcloud/. /var/www/html/ \
+    && rm -f /var/www/html/version.php \
+    && chown -R www-data:www-data /usr/src/nextcloud /var/www/html
 
 # Copy entrypoint hooks and wrapper
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh
@@ -59,6 +70,7 @@ COPY storix-entrypoint.sh /storix-entrypoint.sh
 RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
     && chmod +x /storix-entrypoint.sh \
+    && a2enconf storix-mpm \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d
 
 ENTRYPOINT ["/storix-entrypoint.sh"]

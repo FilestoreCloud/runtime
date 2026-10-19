@@ -16,21 +16,62 @@
     --color-header-background: #071736;
     --color-header-text: #ffffff;
     --color-header-main-text: #ffffff;
+    --color-main-background: #f8fafc;
+    --color-background-plain: #071736;
     --color-loading-light: #1652f0;
     --color-loading-dark: #071736;
     --color-main-text: #071736;
     --color-text-maxcontrast: #071736;
 }
 
-#header {
+/* Header Navigation Bar */
+#header,
+header.header-app {
     background-color: #071736 !important;
     border-bottom: 2px solid #1652f0 !important;
 }
 
-#body-login {
-    background: radial-gradient(circle at 50% 30%, #1652f0 0%, #071736 100%) !important;
+#header .header-brand,
+#header .logo {
+    max-height: 38px !important;
+    object-fit: contain !important;
 }
 
+#header .header-appname {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+#header .header-menu,
+#header a {
+    color: #ffffff !important;
+}
+
+/* Login Page Branding */
+#body-login {
+    background: radial-gradient(circle at 50% 30%, #1652f0 0%, #071736 100%) !important;
+    background-attachment: fixed !important;
+}
+
+#body-login .wrapper {
+    background: rgba(255, 255, 255, 0.98) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+    padding: 32px !important;
+}
+
+#body-login .logo {
+    max-height: 64px !important;
+    max-width: 240px !important;
+    margin: 0 auto 16px auto !important;
+    object-fit: contain !important;
+}
+
+#body-login #header .logo {
+    max-height: 48px !important;
+}
+
+/* Buttons and Primary Controls */
 .primary,
 button.primary,
 input[type="submit"].primary,
@@ -38,6 +79,8 @@ input[type="submit"].primary,
     background-color: #1652f0 !important;
     border-color: #1652f0 !important;
     color: #ffffff !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
 }
 
 .primary:hover,
@@ -47,3 +90,10 @@ input[type="submit"].primary:hover,
     background-color: #1245cc !important;
     border-color: #1245cc !important;
 }
+
+input:focus,
+textarea:focus {
+    border-color: #1652f0 !important;
+    box-shadow: 0 0 0 2px rgba(22, 82, 240, 0.2) !important;
+}
+

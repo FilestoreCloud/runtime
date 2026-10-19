@@ -20,17 +20,24 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
+# If REDIS_HOST is empty or unset, ensure Redis session handler and locking are omitted
+if [ -z "${REDIS_HOST:-}" ]; then
+    unset REDIS_HOST
+    unset REDIS_PORT
+    rm -f /usr/local/etc/php/conf.d/redis-session.ini 2>/dev/null || :
+fi
+
 echo "[ENTRYPOINT-HOOK] Nextcloud Docker Hook: Checking initialization and configuration..."
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE DATA DIRECTORY & .NCDATA EXIST (Primary Object Storage / Ephemeral)
 # ──────────────────────────────────────────────────────────────────────────
-CURRENT_STEP="Ensuring data directory"
-mkdir -p /var/www/html/data 2>/dev/null || :
+CURRENT_STEP="Ensuring data and app directories"
+mkdir -p /var/www/html/data /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 if [ ! -f /var/www/html/data/.ncdata ]; then
     echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
 fi
-chown www-data:www-data /var/www/html/data 2>/dev/null || :
+chown -R www-data:www-data /var/www/html/data /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
 # ──────────────────────────────────────────────────────────────────────────
 # 0. ENSURE MODULAR CONFIG FILES IN MOUNTED EFS /var/www/html/config
@@ -41,6 +48,9 @@ mkdir -p /var/www/html/config
 # Remove legacy bare wildcard '*' from existing config.php in EFS if present
 if [ -f /var/www/html/config/config.php ]; then
     sed -i.bak "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null && rm -f /var/www/html/config/config.php.bak 2>/dev/null || sed -i "/['\"]\*['\"]/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/PGSQL_ATTR_SSL_MODE/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/pgsql_ssl/d" /var/www/html/config/config.php 2>/dev/null || :
+    sed -i "/dbdriveroptions/d" /var/www/html/config/config.php 2>/dev/null || :
 fi
 
 if [ -d /usr/src/nextcloud/config ]; then
@@ -76,9 +86,10 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
         $db = getenv("POSTGRES_DB") ?: "nextcloud";
         $user = getenv("POSTGRES_USER") ?: "nextcloud";
         $pass = getenv("POSTGRES_PASSWORD") ?: "";
+        $sslmode = getenv("PGSSLMODE") ?: "prefer";
         try {
-            $pdo = new PDO("pgsql:host=$host;dbname=$db", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
-            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_users'\''");
+            $pdo = new PDO("pgsql:host=$host;dbname=$db;sslmode=$sslmode", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+            $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_appconfig'\''");
             if ($stmt && $stmt->fetch()) {
                 echo "1";
             } else {
@@ -96,24 +107,45 @@ if [ ! -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
         SECRET="sec_$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | head -c 30 || echo "sec$(date +%s)")"
         cat <<EOF > /var/www/html/config/config.php
 <?php
+\$rawDomains = '${NEXTCLOUD_TRUSTED_DOMAINS:-}';
+\$trusted = array('localhost', '127.0.0.1');
+if (!empty(\$rawDomains)) {
+    foreach (preg_split('/[\s,]+/', \$rawDomains) as \$d) {
+        \$d = trim(\$d);
+        if (\$d !== '' && \$d !== '*' && !in_array(\$d, \$trusted, true)) {
+            \$trusted[] = \$d;
+        }
+    }
+}
 \$CONFIG = array (
   'instanceid' => '${INSTANCE_ID}',
   'passwordsalt' => 'salt_${INSTANCE_ID}',
   'secret' => '${SECRET}',
-  'trusted_domains' => array (
-    0 => 'localhost',
-    1 => '127.0.0.1',
-  ),
+  'trusted_domains' => \$trusted,
   'datadirectory' => '/var/www/html/data',
   'dbtype' => 'pgsql',
   'version' => '30.0.17.2',
-  'overwrite.cli.url' => 'http://localhost',
+  'overwrite.cli.url' => (getenv('OVERWRITECLIURL') ?: 'http://localhost'),
+  'overwriteprotocol' => (getenv('OVERWRITEPROTOCOL') ?: 'https'),
   'dbname' => '${POSTGRES_DB:-nextcloud}',
   'dbhost' => '${POSTGRES_HOST}',
-  'dbport' => '',
+  'dbport' => '5432',
   'dbtableprefix' => 'oc_',
   'dbuser' => '${POSTGRES_USER:-nextcloud}',
   'dbpassword' => '${POSTGRES_PASSWORD:-}',
+  'appstoreenabled' => false,
+  'apps_paths' => array (
+    0 => array (
+      'path' => '/var/www/html/apps',
+      'url' => '/apps',
+      'writable' => false,
+    ),
+    1 => array (
+      'path' => '/var/www/html/custom_apps',
+      'url' => '/custom_apps',
+      'writable' => true,
+    ),
+  ),
   'installed' => true,
 );
 EOF
@@ -180,12 +212,49 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
         su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive"
 
         # Configure Storix Theming & Corporate Branding
+        CURRENT_STEP="Configuring Storix branding and theme"
         echo "[ENTRYPOINT-HOOK] Applying default Storix branding and theme..."
-        CURRENT_STEP="Configuring Storix default theming"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming name --value='Storix'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming slogan --value='Enterprise Cloud Storage & AI Platform'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
+        
+        # 1. Ensure theming app is enabled
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force theming" 2>/dev/null || :
+        
+        # 2. Configure theming text and color metadata
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config name 'Storix'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming name --value='Storix'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config slogan 'Enterprise Cloud Storage Platform'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming slogan --value='Enterprise Cloud Storage Platform'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config url 'https://storix.io'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config color '#1652f0'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config primary_color '#1652f0'" 2>/dev/null || :
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config background_color '#071736'" 2>/dev/null || :
+
+        # 3. Apply Storix Logos, Header Logo, Favicon, and Background via occ theming:config
+        THEME_IMG_DIR="/var/www/html/themes/storix/core/img"
+        if [ -d "$THEME_IMG_DIR" ]; then
+            if [ -f "$THEME_IMG_DIR/logo-white.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logo $THEME_IMG_DIR/logo-white.png" 2>/dev/null || :
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logoheader $THEME_IMG_DIR/logo-white.png" 2>/dev/null || :
+            elif [ -f "$THEME_IMG_DIR/logo.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logo $THEME_IMG_DIR/logo.png" 2>/dev/null || :
+            fi
+
+            if [ -f "$THEME_IMG_DIR/favicon.ico" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config favicon $THEME_IMG_DIR/favicon.ico" 2>/dev/null || :
+            fi
+
+            if [ -f "$THEME_IMG_DIR/background.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config background $THEME_IMG_DIR/background.png" 2>/dev/null || :
+            fi
+        fi
+
+        # 4. Set system theme to storix in config.php
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set theme --value='storix'" 2>/dev/null || :
+
+        # 5. Invalidate theme cachebuster so clients immediately receive new branding
+        CACHEBUSTER=$(date +%s)
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming cachebuster --value='${CACHEBUSTER}'" 2>/dev/null || :
+
+        # Configure background jobs mode to cron (EventBridge dedicated runner)
+        echo "[ENTRYPOINT-HOOK] Setting background jobs mode to cron runner..."
+        su -s /bin/sh www-data -c "php /var/www/html/occ background:cron" 2>/dev/null || :
 
         # Mark initialization as completed in persistent storage (EFS)
         CURRENT_STEP="Marking tenant initialization complete"
