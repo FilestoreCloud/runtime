@@ -77,6 +77,54 @@ class OC_Theme {
     }
 
     /**
+     * Primary Brand Color for UI buttons and active accents
+     */
+    public function getColorPrimary(): string {
+        return '#1652f0';
+    }
+
+    /**
+     * Default primary color fallback
+     */
+    public function getDefaultColorPrimary(): string {
+        return '#1652f0';
+    }
+
+    /**
+     * Header & background base color (Deep Navy)
+     */
+    public function getBackgroundColor(): string {
+        return '#071736';
+    }
+
+    /**
+     * Path / URL to the main brand logo
+     */
+    public function getLogo(bool $useSvg = true): string {
+        if ($useSvg && file_exists(__DIR__ . '/core/img/logo-wide.svg')) {
+            return 'themes/storix/core/img/logo-wide.svg';
+        }
+        return 'themes/storix/core/img/logo-white.png';
+    }
+
+    /**
+     * Path / URL to the header navigation logo
+     */
+    public function getLogoHeader(bool $useSvg = true): string {
+        if ($useSvg && file_exists(__DIR__ . '/core/img/logo-header.svg')) {
+            return 'themes/storix/core/img/logo-header.svg';
+        }
+        return 'themes/storix/core/img/logo-header.png';
+    }
+
+    /**
+     * Path / URL to the branded background image
+     */
+    public function getBackground(): string {
+        return 'themes/storix/core/img/background.png';
+    }
+
+    /**
      * Product name returned in status.php and API endpoints
      */
     public function getProductName(): string {

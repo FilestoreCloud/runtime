@@ -9,9 +9,44 @@ if [ -z "${REDIS_HOST:-}" ]; then
 fi
 
 # Ensure all application and configuration directories exist with correct permissions
-mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes
-chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes 2>/dev/null || :
+mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img
+chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img 2>/dev/null || :
 chmod -R 775 /var/www/html/config /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
+
+# Sync modular config templates (nextcloud.config.php with theme=>storix) into mounted EFS config
+if [ -d /usr/src/nextcloud/config ]; then
+    for cfg in /usr/src/nextcloud/config/*.config.php; do
+        if [ -f "$cfg" ]; then
+            target="/var/www/html/config/$(basename "$cfg")"
+            if [ ! -f "$target" ] || ! cmp -s "$cfg" "$target" 2>/dev/null; then
+                echo "[STORIX] Syncing modular config $(basename "$cfg") to EFS /var/www/html/config..."
+                cp -p "$cfg" "$target" 2>/dev/null || cp "$cfg" "$target"
+                chown www-data:www-data "$target" 2>/dev/null || :
+            fi
+        fi
+    done
+fi
+
+# Ensure Storix custom theme is always populated and up-to-date in /var/www/html/themes
+if [ -d /usr/src/nextcloud/themes/storix ]; then
+    mkdir -p /var/www/html/themes/storix
+    cp -r /usr/src/nextcloud/themes/storix/. /var/www/html/themes/storix/ 2>/dev/null || :
+    chown -R www-data:www-data /var/www/html/themes/storix 2>/dev/null || :
+fi
+
+# Ensure Storix core image assets are present in /var/www/html/core/img
+if [ -d /usr/src/nextcloud/themes/storix/core/img ]; then
+    mkdir -p /var/www/html/core/img
+    cp -r /usr/src/nextcloud/themes/storix/core/img/logo-white.png /var/www/html/core/img/logo-header.png 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/logo-wide.svg /var/www/html/core/img/logo-header.svg 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/logo-white.png /var/www/html/core/img/logo.png 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/logo-wide.svg /var/www/html/core/img/logo.svg 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/favicon.ico /var/www/html/core/img/favicon.ico 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/favicon.png /var/www/html/core/img/favicon.png 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/favicon-touch.png /var/www/html/core/img/favicon-touch.png 2>/dev/null || :
+    cp -r /usr/src/nextcloud/themes/storix/core/img/background.png /var/www/html/core/img/background.png 2>/dev/null || :
+    chown -R www-data:www-data /var/www/html/core/img 2>/dev/null || :
+fi
 
 # In ECS Fargate, /var/www/html is ephemeral container filesystem while /var/www/html/config is mounted to persistent EFS.
 # Sanitize and validate config.php on EFS if present:

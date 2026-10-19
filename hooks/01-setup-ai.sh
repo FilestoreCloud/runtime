@@ -212,12 +212,45 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
         su -s /bin/sh www-data -c "php /var/www/html/occ maintenance:repair --include-expensive"
 
         # Configure Storix Theming & Corporate Branding
+        CURRENT_STEP="Configuring Storix branding and theme"
         echo "[ENTRYPOINT-HOOK] Applying default Storix branding and theme..."
-        CURRENT_STEP="Configuring Storix default theming"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming name --value='Storix'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming slogan --value='Enterprise Cloud Storage & AI Platform'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
-        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
+        
+        # 1. Ensure theming app is enabled
+        su -s /bin/sh www-data -c "php /var/www/html/occ app:enable --force theming" 2>/dev/null || :
+        
+        # 2. Configure theming text and color metadata
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config name 'Storix'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming name --value='Storix'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config slogan 'Enterprise Cloud Storage Platform'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming slogan --value='Enterprise Cloud Storage Platform'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config url 'https://storix.io'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming url --value='https://storix.io'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config color '#1652f0'" 2>/dev/null || su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming color --value='#1652f0'"
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config primary_color '#1652f0'" 2>/dev/null || :
+        su -s /bin/sh www-data -c "php /var/www/html/occ theming:config background_color '#071736'" 2>/dev/null || :
+
+        # 3. Apply Storix Logos, Header Logo, Favicon, and Background via occ theming:config
+        THEME_IMG_DIR="/var/www/html/themes/storix/core/img"
+        if [ -d "$THEME_IMG_DIR" ]; then
+            if [ -f "$THEME_IMG_DIR/logo-white.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logo $THEME_IMG_DIR/logo-white.png" 2>/dev/null || :
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logoheader $THEME_IMG_DIR/logo-white.png" 2>/dev/null || :
+            elif [ -f "$THEME_IMG_DIR/logo.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config logo $THEME_IMG_DIR/logo.png" 2>/dev/null || :
+            fi
+
+            if [ -f "$THEME_IMG_DIR/favicon.ico" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config favicon $THEME_IMG_DIR/favicon.ico" 2>/dev/null || :
+            fi
+
+            if [ -f "$THEME_IMG_DIR/background.png" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ theming:config background $THEME_IMG_DIR/background.png" 2>/dev/null || :
+            fi
+        fi
+
+        # 4. Set system theme to storix in config.php
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:system:set theme --value='storix'" 2>/dev/null || :
+
+        # 5. Invalidate theme cachebuster so clients immediately receive new branding
+        CACHEBUSTER=$(date +%s)
+        su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set theming cachebuster --value='${CACHEBUSTER}'" 2>/dev/null || :
 
         # Configure background jobs mode to cron (EventBridge dedicated runner)
         echo "[ENTRYPOINT-HOOK] Setting background jobs mode to cron runner..."
