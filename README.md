@@ -8,15 +8,28 @@
 # Storix Runtime Image
 
 <p align="center">
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/CI%2FCD-Quality%20Gate%20Passing-brightgreen?style=flat-square&logo=githubactions" alt="CI Quality Gate"></a>
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Tests-61%2F61%20Passed%20(100%25)-brightgreen?style=flat-square&logo=pytest" alt="Tests Passed"></a>
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Security-Trivy%200%20CVE%20%7C%200%20Misconfig-brightgreen?style=flat-square&logo=aquasecurity" alt="Trivy Clean"></a>
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Architecture-ARM64%20%2B%20AMD64-blue?style=flat-square&logo=arm" alt="Multi-Arch"></a>
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Cold%20Start-AWS%20SOCI%20Indexed-blue?style=flat-square" alt="AWS SOCI"></a>
-  <a href="#test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Fast%20Boot-%3C%2015s%20Target-brightgreen?style=flat-square" alt="Fast Boot"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/CI%2FCD-Quality%20Gate%20Passing-brightgreen?style=flat-square&logo=githubactions" alt="CI Quality Gate"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Tests-71%2F71%20Passed%20(100%25)-brightgreen?style=flat-square&logo=pytest" alt="Tests Passed"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Security-Trivy%200%20CVE%20%7C%200%20Misconfig-brightgreen?style=flat-square&logo=aquasecurity" alt="Trivy Clean"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Architecture-ARM64%20%2B%20AMD64-blue?style=flat-square&logo=arm" alt="Multi-Arch"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Theming-Storix%20White--Label-brightgreen?style=flat-square" alt="Storix Theming"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Cold%20Start-AWS%20SOCI%20Indexed-blue?style=flat-square" alt="AWS SOCI"></a>
+  <a href="#-test-status--container-hardening-scorecard"><img src="https://img.shields.io/badge/Fast%20Boot-%3C%2015s%20Target-brightgreen?style=flat-square" alt="Fast Boot"></a>
 </p>
 
-Production-hardened enterprise container runtime with pre-baked AI assistant, AWS Graviton ARM64 multi-arch optimization, AWS SOCI cold-start indexing, and Amazon Bedrock integration for AWS ECS Fargate.
+<p align="center">
+  <a href="#1-overview--golden-image-baking-strategy"><strong>Overview</strong></a> ·
+  <a href="#-test-status--container-hardening-scorecard"><strong>Scorecard</strong></a> ·
+  <a href="#2-directory-structure"><strong>Structure</strong></a> ·
+  <a href="#3-white-label-theming--brand-assets"><strong>Theming</strong></a> ·
+  <a href="#4-automated-cicd-image-build-github-actions"><strong>CI/CD</strong></a> ·
+  <a href="#5-automated-testing"><strong>Testing</strong></a> ·
+  <a href="https://github.com/FilestoreCloud/docs"><strong>Documentation</strong></a>
+</p>
+
+---
+
+Production-hardened enterprise container runtime with pre-baked AI assistant, AWS Graviton ARM64 multi-arch optimization, AWS SOCI cold-start indexing, white-label Storix custom theming, and Amazon Bedrock integration for AWS ECS Fargate.
 
 ---
 
@@ -63,6 +76,9 @@ To solve this, this repository implements a **Golden Image Baking** strategy:
 │   └── 01-setup-ai.sh          # Container initialization hook for AI apps, LiteLLM linking & theming
 ├── themes/
 │   └── storix/                 # Storix white-label theme (defaults.php, server.css, logos, favicons)
+│       ├── defaults.php        # Custom OC_Theme method overrides
+│       ├── core/css/server.css # Branded colors, CSS variables, login gradients
+│       └── core/img/           # Branded logo-header, logo-wide, favicon assets
 ├── .github/
 │   └── workflows/
 │       └── docker.yml          # Multi-arch Buildx pipeline with AWS SOCI indexing
@@ -71,7 +87,18 @@ To solve this, this repository implements a **Golden Image Baking** strategy:
 
 ---
 
-## 3. Automated CI/CD Image Build (GitHub Actions)
+## 3. White-Label Theming & Brand Assets
+
+Storix completely replaces default Nextcloud branding with an enterprise identity:
+
+- **Theme Class Overrides (`themes/storix/defaults.php`):** Implements `OC_Theme` methods (`getEntity`, `getName`, `getTitle`, `getBaseUrl`, `getSlogan`, `getColorPrimary`, `getLogo`, `getBackground`).
+- **Core CSS Overrides (`themes/storix/core/css/server.css`):** Configures primary brand colors (`#1890ff`, `#0f172a`), navigation bar backgrounds, and login button styles.
+- **Dockerfile Asset Overlays:** Automatically replaces default Nextcloud core images (`logo.png`, `logo-header.png`, `favicon.ico`, `background.png`) during image baking so that branding persists even before initial database setup.
+- **OCC Automation (`hooks/01-setup-ai.sh`):** Automates `occ theming:config` commands on startup to programmatically lock in brand colors, names, slogans, and logo paths.
+
+---
+
+## 4. Automated CI/CD Image Build (GitHub Actions)
 
 Container builds are automated via [`.github/workflows/docker.yml`](.github/workflows/docker.yml):
 * **Triggers:** Push to `main`, git tags (`v*`), or on-demand via `workflow_dispatch`.
@@ -82,12 +109,12 @@ Container builds are automated via [`.github/workflows/docker.yml`](.github/work
 
 ---
 
-## 4. Automated Testing
+## 5. Automated Testing
 
 Run the automated test suite locally:
 
 ```bash
-# Run all automated static, configuration, and simulation tests
+# Run all automated static, configuration, theming, and simulation tests
 ./tests/run_tests.sh
 
 # Or run tests including full Docker build verification
@@ -96,7 +123,7 @@ Run the automated test suite locally:
 
 ---
 
-## 5. Related Repositories
+## 6. Related Repositories
 
 - [**`FilestoreCloud/infra`**](https://github.com/FilestoreCloud/infra): Modular CloudFormation IaC, Step Functions SAGAs & Lambda Control Plane.
 - [**`FilestoreCloud/console`**](https://github.com/FilestoreCloud/console): Super Admin Web Console (React 18 + Refine + Ant Design + WebAuthn).
