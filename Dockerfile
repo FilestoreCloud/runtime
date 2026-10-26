@@ -59,7 +59,8 @@ RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/i
     && cp -r /usr/src/nextcloud/themes/storix/core/img/favicon-touch.png /usr/src/nextcloud/core/img/favicon-touch.png 2>/dev/null || : \
     && cp -r /usr/src/nextcloud/themes/storix/core/img/background.png /usr/src/nextcloud/core/img/background.png 2>/dev/null || : \
     && cp -a /usr/src/nextcloud/. /var/www/html/ \
-    && rm -f /var/www/html/version.php \
+    && cp -p /usr/src/nextcloud/version.php /var/www/html/version.php \
+    && rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL \
     && chown -R www-data:www-data /usr/src/nextcloud /var/www/html
 
 # Copy entrypoint hooks and wrapper
