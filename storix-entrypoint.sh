@@ -76,7 +76,9 @@ if [ -f /var/www/html/config/config.php ]; then
                 $pattern = "/(\047dbpassword\047\s*=>\s*\047)[^\047]*(\047)/";
                 if (preg_match($pattern, $c)) {
                     $escaped = addcslashes($pass, "\047\\");
-                    $updated = preg_replace($pattern, "${1}{$escaped}${2}", $c);
+                    $updated = preg_replace_callback($pattern, function($m) use ($escaped) {
+                        return $m[1] . $escaped . $m[2];
+                    }, $c);
                     if ($updated && $updated !== $c) {
                         file_put_contents($file, $updated);
                         echo "[STORIX] Synchronized dbpassword in config.php from POSTGRES_PASSWORD.\n";
@@ -153,6 +155,23 @@ if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /
             } catch (Exception $e) {
                 echo "[STORIX] DB Check Notice: " . $e->getMessage() . "\n";
             }
+        ' 2>/dev/null || :
+
+        # Ensure database schema is clean if we are performing a fresh installation
+        php -r '
+            $h = getenv("POSTGRES_HOST");
+            $u = getenv("POSTGRES_USER") ?: "nextcloud";
+            $p = getenv("POSTGRES_PASSWORD");
+            $db = getenv("POSTGRES_DB") ?: "nextcloud";
+            $ssl = getenv("PGSSLMODE") ?: "prefer";
+            try {
+                $pdo = new PDO("pgsql:host=$h;dbname=$db;sslmode=$ssl", $u, $p, [PDO::ATTR_TIMEOUT => 10]);
+                $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_appconfig'\''");
+                if ($stmt && $stmt->fetch()) {
+                    $pdo->exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO \"$u\"; GRANT ALL ON SCHEMA public TO public;");
+                    echo "[STORIX] Dropped existing tables for clean occ install.\n";
+                }
+            } catch (Exception $e) {}
         ' 2>/dev/null || :
 
         echo "[STORIX] Running occ maintenance:install..."
