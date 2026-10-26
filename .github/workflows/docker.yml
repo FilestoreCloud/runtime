@@ -99,7 +99,7 @@ jobs:
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
         run: |
           python3 -c "
-          import boto3, os, sys
+          import boto3, os, sys, json
           from botocore.exceptions import ClientError
 
           region = os.environ['AWS_REGION']
@@ -121,6 +121,37 @@ jobs:
               else:
                   print(f'Error describing repository: {e}')
                   sys.exit(1)
+
+          lifecycle_policy = json.dumps({
+              'rules': [
+                  {
+                      'rulePriority': 1,
+                      'description': 'Expire untagged images older than 7 days',
+                      'selection': {
+                          'tagStatus': 'untagged',
+                          'countType': 'sinceImagePushed',
+                          'countUnit': 'days',
+                          'countNumber': 7
+                      },
+                      'action': {'type': 'expire'}
+                  },
+                  {
+                      'rulePriority': 2,
+                      'description': 'Keep maximum 15 tagged images',
+                      'selection': {
+                          'tagStatus': 'any',
+                          'countType': 'imageCountMoreThan',
+                          'countNumber': 15
+                      },
+                      'action': {'type': 'expire'}
+                  }
+              ]
+          })
+          try:
+              client.put_lifecycle_policy(repositoryName=repo, lifecyclePolicyText=lifecycle_policy)
+              print(f'✅ ECR lifecycle policy configured on {repo}.')
+          except Exception as lp_err:
+              print(f'⚠️ Warning applying lifecycle policy: {lp_err}')
           "
 
       - name: Determine Docker Image Tags
@@ -185,15 +216,16 @@ jobs:
           echo "============================================================"
 
       - name: Trigger GitOps Rollout in infra
-        if: github.event_name != 'workflow_call' && (startsWith(github.ref, 'refs/tags/v') || github.ref_name == 'dev' || github.event_name == 'workflow_dispatch') && env.GITOPS_TOKEN != ''
+        if: github.event_name != 'workflow_call' && (startsWith(github.ref, 'refs/tags/v') || github.ref_name == 'dev' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch') && env.GITOPS_TOKEN != ''
         env:
           GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
           ORG_NAME: ${{ github.repository_owner }}
         run: |
-          echo "Dispatching release event to ${ORG_NAME}/infra..."
+          ENV_NAME="${{ (github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/v')) && 'prod' || 'dev' }}"
+          echo "Dispatching release event to ${ORG_NAME}/infra for target env: ${ENV_NAME}..."
           curl -s -X POST \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${GITOPS_TOKEN}" \
             https://api.github.com/repos/${ORG_NAME}/infra/dispatches \
-            -d "{\"event_type\": \"runtime_release\", \"client_payload\": {\"tag\": \"${{ github.ref_name }}\", \"image\": \"${{ steps.meta.outputs.primary_tag }}\"}}"
+            -d "{\"event_type\": \"runtime_release\", \"client_payload\": {\"environment\": \"${ENV_NAME}\", \"tag\": \"${{ github.ref_name }}\", \"image\": \"${{ steps.meta.outputs.primary_tag }}\"}}"
           echo "✅ Release event dispatched to ${ORG_NAME}/infra."
