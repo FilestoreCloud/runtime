@@ -46,7 +46,7 @@ COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
 COPY config/nextcloud.config.php /usr/src/nextcloud/config/nextcloud.config.php
 # Copy Storix custom theme
 COPY themes/storix /usr/src/nextcloud/themes/storix/
-RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/img /var/www/html/core/img \
+RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/img /var/www/html/core/img /var/www/html/themes/storix/core/img/tenants /usr/src/nextcloud/themes/storix/core/img/tenants \
     && cp /usr/src/nextcloud/config/ai.config.php /var/www/html/config/ai.config.php \
     && cp /usr/src/nextcloud/config/nextcloud.config.php /var/www/html/config/nextcloud.config.php \
     && cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/storix \
@@ -61,7 +61,8 @@ RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/i
     && cp -a /usr/src/nextcloud/. /var/www/html/ \
     && cp -p /usr/src/nextcloud/version.php /var/www/html/version.php \
     && rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL \
-    && chown -R www-data:www-data /usr/src/nextcloud /var/www/html
+    && chown -R www-data:www-data /usr/src/nextcloud /var/www/html \
+    && chmod -R 775 /var/www/html/themes /usr/src/nextcloud/themes
 
 # Copy entrypoint hooks and wrapper
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh
