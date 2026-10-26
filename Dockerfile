@@ -7,7 +7,7 @@
 # ==============================================================================
 
 # ── Stage 1: Downloader ────────────────────────────────────────────────────────
-FROM alpine:3.20 AS builder
+FROM alpine:3.24 AS builder
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache curl tar ca-certificates
