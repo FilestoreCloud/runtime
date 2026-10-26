@@ -29,9 +29,10 @@ fi
 
 # Ensure Storix custom theme is always populated and up-to-date in /var/www/html/themes
 if [ -d /usr/src/nextcloud/themes/storix ]; then
-    mkdir -p /var/www/html/themes/storix
+    mkdir -p /var/www/html/themes/storix/core/img/tenants
     cp -r /usr/src/nextcloud/themes/storix/. /var/www/html/themes/storix/ 2>/dev/null || :
-    chown -R www-data:www-data /var/www/html/themes/storix 2>/dev/null || :
+    chown -R www-data:www-data /var/www/html/themes 2>/dev/null || :
+    chmod -R 775 /var/www/html/themes 2>/dev/null || :
 fi
 
 # Ensure Storix core image assets are present in /var/www/html/core/img
@@ -196,6 +197,12 @@ if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /
         rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
         echo "[STORIX] Automated headless installation completed successfully."
     fi
+fi
+
+# Ensure admin password is authenticated and up to date if supplied
+if [ -n "${NEXTCLOUD_ADMIN_PASSWORD:-}" ] && [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
+    ADMIN_USER="${NEXTCLOUD_ADMIN_USER:-admin}"
+    OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" runuser -u www-data -- php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
 fi
 
 # Ensure CAN_INSTALL is permanently gone before handing off to entrypoint

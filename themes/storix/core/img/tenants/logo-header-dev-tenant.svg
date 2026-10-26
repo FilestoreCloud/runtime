@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 50" width="260" height="50">
+  <defs>
+    <linearGradient id="gradH_dev-tenant" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="5" width="40" height="40" rx="10" fill="url(#gradH_dev-tenant)"/>
+  <text x="25" y="26" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="20" font-weight="800" fill="#ffffff" text-anchor="middle" dominant-baseline="central">D</text>
+  <text x="56" y="26" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="18" font-weight="700" fill="#ffffff" dominant-baseline="central">Dev Tenant CLOUD</text>
+</svg>
