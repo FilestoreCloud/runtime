@@ -194,16 +194,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Setup AWS SOCI Indexer
-        uses: aws-actions/soci-actions/setup@v0.1.0
-        continue-on-error: true
-
-      - name: Create and Push SOCI Index Artifacts
-        continue-on-error: true
-        run: |
-          echo "Generating AWS SOCI Index for fast Fargate cold start..."
-          soci create "${{ steps.meta.outputs.primary_tag }}" || true
-          soci push "${{ steps.meta.outputs.primary_tag }}" || true
 
       - name: Deployment Summary & Verification
         run: |
