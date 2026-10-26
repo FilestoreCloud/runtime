@@ -8,6 +8,10 @@ updates:
     labels:
       - "dependencies"
       - "ci/cd"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -17,3 +21,6 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "nextcloud"
+        update-types: ["version-update:semver-major"]
