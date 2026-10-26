@@ -27,7 +27,7 @@ RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assist
     && tar -xzf integration_openai.tar.gz && rm -f integration_openai.tar.gz
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
-FROM nextcloud:30.0.17-apache
+FROM nextcloud:35.0.1-apache
 
 LABEL maintainer="FilestoreCloud Engineering Team"
 LABEL version="2.0.0"
