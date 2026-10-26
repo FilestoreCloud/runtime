@@ -1,0 +1,44 @@
+name: 💡 Feature Request
+description: Propose an enhancement, new app pre-bundling, or optimization for Storix Runtime
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for proposing an enhancement to Storix Runtime!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / Motivation
+      description: What limitation or use case does this feature address?
+      placeholder: Describe the motivation...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Enhancement
+      description: Describe the changes to Dockerfile, config, hooks, or themes.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "High (Critical runtime requirement)"
+        - "Medium (Performance / Usability enhancement)"
+        - "Low (Minor cosmetic / non-urgent)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to submit a PR to implement this feature.
