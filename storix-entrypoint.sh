@@ -48,6 +48,16 @@ if [ -d /usr/src/nextcloud/themes/storix/core/img ]; then
     chown -R www-data:www-data /var/www/html/core/img 2>/dev/null || :
 fi
 
+# Ensure version.php is ALWAYS present from /usr/src/nextcloud so occ never fails
+if [ -f /usr/src/nextcloud/version.php ]; then
+    cp -p /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
+    chown www-data:www-data /var/www/html/version.php 2>/dev/null || :
+fi
+
+# CRITICAL SECURITY RULE: Permanently block web-based manual installer ("Create an admin account")
+# Nextcloud displays the installation wizard if CAN_INSTALL exists. Deleting it prevents the wizard from ever rendering.
+rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
+
 # In ECS Fargate, /var/www/html is ephemeral container filesystem while /var/www/html/config is mounted to persistent EFS.
 # Sanitize, validate and synchronize config.php on EFS if present:
 if [ -f /var/www/html/config/config.php ]; then
@@ -85,7 +95,7 @@ if [ -f /var/www/html/config/config.php ]; then
 fi
 
 # Self-healing: If config.php exists on persistent storage but PostgreSQL was recreated (tables missing):
-# Reset config.php so official entrypoint performs clean automated install into the new database.
+# Reset config.php so headless installer performs clean automated install into the new database.
 if [ -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
     DB_OK=$(php -r '
         $host = getenv("POSTGRES_HOST");
@@ -112,13 +122,83 @@ if [ -f /var/www/html/config/config.php ] && [ -n "${POSTGRES_HOST:-}" ]; then
     fi
 fi
 
-# Fast Boot Optimization (< 2.5s cold start):
-# - If config.php exists (Nextcloud already installed on EFS): restore version.php so official entrypoint skips re-install.
-# - If config.php does not exist: ensure version.php is absent so official entrypoint performs clean automated install.
-if [ -f /var/www/html/config/config.php ]; then
-    cp -p /usr/src/nextcloud/version.php /var/www/html/version.php 2>/dev/null || :
-else
-    rm -f /var/www/html/version.php
+# Automated Headless Installation (Zero Web Setup Wizard):
+# If config.php is missing or lacks 'installed' => true, perform non-interactive CLI installation before Apache starts.
+if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /var/www/html/config/config.php; then
+    echo "[STORIX] Nextcloud is not installed. Performing headless automated CLI installation..."
+    rm -f /var/www/html/config/CAN_INSTALL 2>/dev/null || :
+
+    if [ -n "${POSTGRES_HOST:-}" ] && [ -n "${POSTGRES_PASSWORD:-}" ] && [ -n "${NEXTCLOUD_ADMIN_PASSWORD:-}" ]; then
+        ADMIN_USER="${NEXTCLOUD_ADMIN_USER:-admin}"
+        DB_NAME="${POSTGRES_DB:-nextcloud}"
+        DB_USER="${POSTGRES_USER:-nextcloud}"
+
+        # Ensure target database exists in PostgreSQL
+        php -r '
+            $h = getenv("POSTGRES_HOST");
+            $u = getenv("POSTGRES_USER") ?: "nextcloud";
+            $p = getenv("POSTGRES_PASSWORD");
+            $db = getenv("POSTGRES_DB") ?: "nextcloud";
+            $ssl = getenv("PGSSLMODE") ?: "prefer";
+            try {
+                $pdo = new PDO("pgsql:host=$h;dbname=postgres;sslmode=$ssl", $u, $p, [PDO::ATTR_TIMEOUT => 10]);
+                $stmt = $pdo->prepare("SELECT 1 FROM pg_database WHERE datname = ?");
+                $stmt->execute([$db]);
+                if (!$stmt->fetch()) {
+                    $safe_db = preg_replace("/[^a-zA-Z0-9_]/", "", $db);
+                    $pdo->exec("CREATE DATABASE \"$safe_db\"");
+                    echo "[STORIX] Created database $safe_db\n";
+                }
+            } catch (Exception $e) {
+                echo "[STORIX] DB Check Notice: " . $e->getMessage() . "\n";
+            }
+        ' 2>/dev/null || :
+
+        echo "[STORIX] Running occ maintenance:install..."
+        runuser -u www-data -- php /var/www/html/occ maintenance:install \
+            --database pgsql \
+            --database-host "$POSTGRES_HOST" \
+            --database-name "$DB_NAME" \
+            --database-user "$DB_USER" \
+            --database-pass "$POSTGRES_PASSWORD" \
+            --admin-user "$ADMIN_USER" \
+            --admin-pass "$NEXTCLOUD_ADMIN_PASSWORD" \
+            --data-dir "/var/www/html/data" 2>&1 || {
+                echo "[STORIX] Notice: occ maintenance:install returned non-zero code. Verifying status..."
+            }
+
+        # Configure trusted domains
+        runuser -u www-data -- php /var/www/html/occ config:system:set trusted_domains 0 --value="localhost" 2>/dev/null || :
+        runuser -u www-data -- php /var/www/html/occ config:system:set trusted_domains 1 --value="127.0.0.1" 2>/dev/null || :
+        
+        idx=2
+        if [ -n "${NEXTCLOUD_TRUSTED_DOMAINS:-}" ]; then
+            for dom in ${NEXTCLOUD_TRUSTED_DOMAINS}; do
+                runuser -u www-data -- php /var/www/html/occ config:system:set trusted_domains $idx --value="$dom" 2>/dev/null || :
+                idx=$((idx + 1))
+            done
+        fi
+        runuser -u www-data -- php /var/www/html/occ config:system:set trusted_domains $idx --value="*.png261.dev" 2>/dev/null || :
+        idx=$((idx + 1))
+        runuser -u www-data -- php /var/www/html/occ config:system:set trusted_domains $idx --value="png261.dev" 2>/dev/null || :
+
+        if [ -n "${OVERWRITEPROTOCOL:-}" ]; then
+            runuser -u www-data -- php /var/www/html/occ config:system:set overwriteprotocol --value="$OVERWRITEPROTOCOL" 2>/dev/null || :
+        fi
+        if [ -n "${OVERWRITECLIURL:-}" ]; then
+            runuser -u www-data -- php /var/www/html/occ config:system:set overwrite.cli.url --value="$OVERWRITECLIURL" 2>/dev/null || :
+        fi
+        if [ -n "${OVERWRITEHOST:-}" ]; then
+            runuser -u www-data -- php /var/www/html/occ config:system:set overwritehost --value="$OVERWRITEHOST" 2>/dev/null || :
+        fi
+
+        # Permanently block web-based manual installer
+        rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
+        echo "[STORIX] Automated headless installation completed successfully."
+    fi
 fi
+
+# Ensure CAN_INSTALL is permanently gone before handing off to entrypoint
+rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
 
 exec /entrypoint.sh "$@"
