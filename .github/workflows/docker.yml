@@ -70,16 +70,16 @@ jobs:
       ECR_REPOSITORY: ${{ inputs.repository_name || 'dev-nextcloud-enterprise' }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || '' }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Configure AWS Credentials via OIDC
         id: aws-creds
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_RUNTIME || secrets.AWS_ROLE_INFRA }}
           aws-region: ${{ env.AWS_REGION }}
@@ -184,7 +184,7 @@ jobs:
 
       - name: Build and Push Docker Image
         id: build-push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
