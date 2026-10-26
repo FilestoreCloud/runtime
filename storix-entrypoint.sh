@@ -49,11 +49,31 @@ if [ -d /usr/src/nextcloud/themes/storix/core/img ]; then
 fi
 
 # In ECS Fargate, /var/www/html is ephemeral container filesystem while /var/www/html/config is mounted to persistent EFS.
-# Sanitize and validate config.php on EFS if present:
+# Sanitize, validate and synchronize config.php on EFS if present:
 if [ -f /var/www/html/config/config.php ]; then
     sed -i "/PGSQL_ATTR_SSL_MODE/d" /var/www/html/config/config.php 2>/dev/null || :
     sed -i "/pgsql_ssl/d" /var/www/html/config/config.php 2>/dev/null || :
     sed -i "/dbdriveroptions/d" /var/www/html/config/config.php 2>/dev/null || :
+
+    # Synchronize POSTGRES_PASSWORD into config.php if present in environment
+    if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+        php -r '
+            $pass = getenv("POSTGRES_PASSWORD");
+            $file = "/var/www/html/config/config.php";
+            if (file_exists($file) && !empty($pass)) {
+                $c = file_get_contents($file);
+                $pattern = "/(\047dbpassword\047\s*=>\s*\047)[^\047]*(\047)/";
+                if (preg_match($pattern, $c)) {
+                    $escaped = addcslashes($pass, "\047\\");
+                    $updated = preg_replace($pattern, "${1}{$escaped}${2}", $c);
+                    if ($updated && $updated !== $c) {
+                        file_put_contents($file, $updated);
+                        echo "[STORIX] Synchronized dbpassword in config.php from POSTGRES_PASSWORD.\n";
+                    }
+                }
+            }
+        ' 2>/dev/null || :
+    fi
 fi
 
 # If config.php exists but does NOT contain 'installed' => true or fails php lint check: reset it.
