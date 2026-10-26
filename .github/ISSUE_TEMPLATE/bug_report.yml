@@ -1,0 +1,74 @@
+name: 🐛 Bug Report
+description: Report a bug or runtime failure in the Storix Container / Nextcloud Runtime
+title: "[Bug]: "
+labels: ["bug", "runtime"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue in Storix Runtime!
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug Description
+      description: Describe what failed or behaved unexpectedly in the container runtime.
+      placeholder: Describe the problem clearly...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - "Dockerfile / Build Process"
+        - "PHP OPcache / Apache MPM"
+        - "Nextcloud Configuration (nextcloud.config.php)"
+        - "AI Assistant (ai.config.php / Bedrock)"
+        - "Entrypoint Hooks (00-clean-stale-config.sh / 01-setup-ai.sh)"
+        - "Storix Custom Theme & Branding"
+        - "Container Startup / Healthcheck"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target Architecture & Platform
+      options:
+        - "AWS ECS Fargate (linux/amd64)"
+        - "AWS ECS Fargate Graviton (linux/arm64)"
+        - "Local Docker Engine (macOS Apple Silicon / M-series)"
+        - "Local Docker Engine (Linux x86_64)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Provide clear steps or commands to trigger the issue.
+      placeholder: |
+        1. Run container with environment variables: `...`
+        2. Access Nextcloud endpoint at `...`
+        3. Observe error code or crash loop
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Container / Apache Logs
+      description: Paste any container stdout/stderr, docker logs, or Nextcloud error logs.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have verified this is reproducible on the latest Golden Image version.
+          required: true
+        - label: I have sanitized any sensitive passwords or tokens from the attached logs.
+          required: true
