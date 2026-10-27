@@ -10,6 +10,9 @@ fi
 
 # Ensure all application and configuration directories exist with correct permissions
 mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img
+if [ ! -f /var/www/html/data/.ncdata ]; then
+    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
+fi
 chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img 2>/dev/null || :
 chmod -R 775 /var/www/html/config /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
@@ -70,13 +73,30 @@ if [ -f /var/www/html/config/config.php ]; then
     if [ -n "${POSTGRES_PASSWORD:-}" ]; then
         php -r '
             $pass = getenv("POSTGRES_PASSWORD");
+            $user = getenv("POSTGRES_USER") ?: "nextcloud";
+            $host = getenv("POSTGRES_HOST");
+            $ssl = getenv("PGSSLMODE") ?: "prefer";
             $file = "/var/www/html/config/config.php";
             if (file_exists($file) && !empty($pass)) {
                 $c = file_get_contents($file);
+                // Align password in PostgreSQL for any dedicated oc_* database user
+                if (preg_match("/\047dbuser\047\s*=>\s*\047([^\047]+)\047/", $c, $um)) {
+                    $curr_user = $um[1];
+                    if ($curr_user !== $user && !empty($host)) {
+                        try {
+                            $pdo = new PDO("pgsql:host=$host;dbname=postgres;sslmode=$ssl", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+                            $q = $pdo->quote($pass);
+                            $pdo->exec("ALTER USER \"$curr_user\" WITH PASSWORD $q");
+                            echo "[STORIX] Aligned PostgreSQL user $curr_user password.\n";
+                        } catch (Exception $e) {}
+                    }
+                }
                 $pattern = "/(\047dbpassword\047\s*=>\s*\047)[^\047]*(\047)/";
                 if (preg_match($pattern, $c)) {
                     $escaped = addcslashes($pass, "\047\\");
-                    $updated = preg_replace($pattern, "${1}{$escaped}${2}", $c);
+                    $updated = preg_replace_callback($pattern, function($m) use ($escaped) {
+                        return $m[1] . $escaped . $m[2];
+                    }, $c);
                     if ($updated && $updated !== $c) {
                         file_put_contents($file, $updated);
                         echo "[STORIX] Synchronized dbpassword in config.php from POSTGRES_PASSWORD.\n";
@@ -155,6 +175,23 @@ if [ ! -f /var/www/html/config/config.php ] || ! grep -q "'installed' => true" /
             }
         ' 2>/dev/null || :
 
+        # Ensure database schema is clean if we are performing a fresh installation
+        php -r '
+            $h = getenv("POSTGRES_HOST");
+            $u = getenv("POSTGRES_USER") ?: "nextcloud";
+            $p = getenv("POSTGRES_PASSWORD");
+            $db = getenv("POSTGRES_DB") ?: "nextcloud";
+            $ssl = getenv("PGSSLMODE") ?: "prefer";
+            try {
+                $pdo = new PDO("pgsql:host=$h;dbname=$db;sslmode=$ssl", $u, $p, [PDO::ATTR_TIMEOUT => 10]);
+                $stmt = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_name = '\''oc_appconfig'\''");
+                if ($stmt && $stmt->fetch()) {
+                    $pdo->exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO \"$u\"; GRANT ALL ON SCHEMA public TO public;");
+                    echo "[STORIX] Dropped existing tables for clean occ install.\n";
+                }
+            } catch (Exception $e) {}
+        ' 2>/dev/null || :
+
         echo "[STORIX] Running occ maintenance:install..."
         runuser -u www-data -- php /var/www/html/occ maintenance:install \
             --database pgsql \
@@ -202,10 +239,33 @@ fi
 # Ensure admin password is authenticated and up to date if supplied
 if [ -n "${NEXTCLOUD_ADMIN_PASSWORD:-}" ] && [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
     ADMIN_USER="${NEXTCLOUD_ADMIN_USER:-admin}"
-    OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" runuser -u www-data -- php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
+    runuser -u www-data -- env OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
+fi
+
+# Ensure .htaccess rewrite rules are active for clean URLs (preventing 404 on /login or /apps/files/)
+if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
+    runuser -u www-data -- php /var/www/html/occ maintenance:update:htaccess 2>/dev/null || :
+fi
+
+# Trigger Storix AI & OpenSearch hooks directly with root privileges
+if [ -x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh ]; then
+    /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh || :
+fi
+if [ -x /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh ]; then
+    /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh || :
 fi
 
 # Ensure CAN_INSTALL is permanently gone before handing off to entrypoint
 rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
+
+# Start background cron worker (runs cron.php every 30 seconds for background jobs & AI tasks)
+(
+    while true; do
+        sleep 30
+        if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
+            runuser -u www-data -- php -f /var/www/html/cron.php >/dev/null 2>&1 || :
+        fi
+    done
+) &
 
 exec /entrypoint.sh "$@"
