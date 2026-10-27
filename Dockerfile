@@ -10,12 +10,12 @@
 FROM alpine:3.20 AS builder
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache curl tar ca-certificates
+RUN apk add --no-cache curl tar ca-certificates python3
 
-ENV ASSISTANT_VERSION="v4.0.0"
-ENV ASSISTANT_SHA256="0d7c72d3cd8a41cdb7a402d0822331d6cad23271a9a4ee6222c85f00b2dd6271"
-ENV OPENAI_INTEGRATION_VERSION="v5.0.0"
-ENV OPENAI_INTEGRATION_SHA256="c980b47d462d6f84a4161e13122277fa049b0650da14207d98066ee7d5ba5127"
+ENV ASSISTANT_VERSION="v2.13.0"
+ENV ASSISTANT_SHA256="59f0a5ee67468b787b0b506018282e18c4689da70301006ee6fbc7e75368fa05"
+ENV OPENAI_INTEGRATION_VERSION="v3.10.2"
+ENV OPENAI_INTEGRATION_SHA256="0567bbea950b2cf90e5547c6bece93750008048b6ea88356742610fd0379f2ab"
 ENV FULLTEXTSEARCH_VERSION="30.0.2"
 ENV FULLTEXTSEARCH_SHA256="b0cbeb2359c8d8ece7dfca81fc770a7c72ce18b21892a460db0b6ae4bffb3046"
 ENV FILES_FULLTEXTSEARCH_VERSION="30.0.1"
@@ -40,7 +40,10 @@ RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assist
     && curl -fsSL -o fulltextsearch_elasticsearch.tar.gz "https://github.com/nextcloud-releases/fulltextsearch_elasticsearch/releases/download/${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}/fulltextsearch_elasticsearch-${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}.tar.gz" \
     && echo "${FULLTEXTSEARCH_ELASTICSEARCH_SHA256}  fulltextsearch_elasticsearch.tar.gz" | sha256sum -c - \
     && tar -xzf fulltextsearch_elasticsearch.tar.gz && rm -f fulltextsearch_elasticsearch.tar.gz \
-    && sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php
+    && sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php \
+    && sed -i 's/protected function buildCompatibilityHeaders(array \$headers) : array/protected function buildCompatibilityHeaders(array \$headers) : array { return \$headers; } protected function _orig_buildCompatibilityHeaders(array \$headers) : array/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/EndpointTrait.php \
+    && sed -i 's/max_analyzed_offset/max_analyzer_offset/g' /apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php \
+    && python3 -c "p = '/apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php'; s = open(p).read(); s = s.replace(\"'mappings' => [\n\t\t\t\t'standard' => [\", \"'mappings' => [\"); s = s.replace(\"\t\t\t\t\t]\n\t\t\t\t]\n\t\t\t]\n\t\t];\", \"\t\t\t\t\t]\n\t\t\t]\n\t\t];\"); open(p, 'w').write(s)"
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
 FROM nextcloud:30.0.17-apache
