@@ -39,7 +39,8 @@ RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assist
     && tar -xzf files_fulltextsearch.tar.gz && rm -f files_fulltextsearch.tar.gz \
     && curl -fsSL -o fulltextsearch_elasticsearch.tar.gz "https://github.com/nextcloud-releases/fulltextsearch_elasticsearch/releases/download/${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}/fulltextsearch_elasticsearch-${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}.tar.gz" \
     && echo "${FULLTEXTSEARCH_ELASTICSEARCH_SHA256}  fulltextsearch_elasticsearch.tar.gz" | sha256sum -c - \
-    && tar -xzf fulltextsearch_elasticsearch.tar.gz && rm -f fulltextsearch_elasticsearch.tar.gz
+    && tar -xzf fulltextsearch_elasticsearch.tar.gz && rm -f fulltextsearch_elasticsearch.tar.gz \
+    && sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
 FROM nextcloud:30.0.17-apache

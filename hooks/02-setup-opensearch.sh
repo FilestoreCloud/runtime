@@ -36,6 +36,11 @@ if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/
         fi
     }
 
+    # Patch Elasticsearch client ProductCheckTrait for OpenSearch compatibility
+    if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php ]; then
+        sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php 2>/dev/null || :
+    fi
+
     echo "[OPENSEARCH-HOOK] 📦 Enabling FullTextSearch suite..."
     run_occ app:enable fulltextsearch || :
     run_occ app:enable files_fulltextsearch || :
