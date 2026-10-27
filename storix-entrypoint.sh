@@ -258,4 +258,14 @@ fi
 # Ensure CAN_INSTALL is permanently gone before handing off to entrypoint
 rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
 
+# Start background cron worker (runs cron.php every 30 seconds for background jobs & AI tasks)
+(
+    while true; do
+        sleep 30
+        if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
+            runuser -u www-data -- php -f /var/www/html/cron.php >/dev/null 2>&1 || :
+        fi
+    done
+) &
+
 exec /entrypoint.sh "$@"
