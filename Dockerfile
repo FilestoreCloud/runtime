@@ -16,6 +16,12 @@ ENV ASSISTANT_VERSION="v4.0.0"
 ENV ASSISTANT_SHA256="0d7c72d3cd8a41cdb7a402d0822331d6cad23271a9a4ee6222c85f00b2dd6271"
 ENV OPENAI_INTEGRATION_VERSION="v5.0.0"
 ENV OPENAI_INTEGRATION_SHA256="c980b47d462d6f84a4161e13122277fa049b0650da14207d98066ee7d5ba5127"
+ENV FULLTEXTSEARCH_VERSION="v35.0.1"
+ENV FULLTEXTSEARCH_SHA256="6b498f2d8e924c4f2481c39d28e3c0e826c6f3ae526441a3d6b552fe23a4bb6c"
+ENV FILES_FULLTEXTSEARCH_VERSION="v35.0.0"
+ENV FILES_FULLTEXTSEARCH_SHA256="a149cdfd7f3008d4665de28ea8e7119e5578563322a41dc77a4014e5bcdd3e1f"
+ENV FULLTEXTSEARCH_ELASTICSEARCH_VERSION="v35.0.1"
+ENV FULLTEXTSEARCH_ELASTICSEARCH_SHA256="9e89858f220ef319411a6ed41eba568119b9f35dd26a396accc45036554c4042"
 
 WORKDIR /apps
 # hadolint ignore=DL4006
@@ -24,7 +30,16 @@ RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assist
     && tar -xzf assistant.tar.gz && rm -f assistant.tar.gz \
     && curl -fsSL -o integration_openai.tar.gz "https://github.com/nextcloud-releases/integration_openai/releases/download/${OPENAI_INTEGRATION_VERSION}/integration_openai-${OPENAI_INTEGRATION_VERSION}.tar.gz" \
     && echo "${OPENAI_INTEGRATION_SHA256}  integration_openai.tar.gz" | sha256sum -c - \
-    && tar -xzf integration_openai.tar.gz && rm -f integration_openai.tar.gz
+    && tar -xzf integration_openai.tar.gz && rm -f integration_openai.tar.gz \
+    && curl -fsSL -o fulltextsearch.tar.gz "https://github.com/nextcloud-releases/fulltextsearch/releases/download/${FULLTEXTSEARCH_VERSION}/fulltextsearch-${FULLTEXTSEARCH_VERSION}.tar.gz" \
+    && echo "${FULLTEXTSEARCH_SHA256}  fulltextsearch.tar.gz" | sha256sum -c - \
+    && tar -xzf fulltextsearch.tar.gz && rm -f fulltextsearch.tar.gz \
+    && curl -fsSL -o files_fulltextsearch.tar.gz "https://github.com/nextcloud-releases/files_fulltextsearch/releases/download/${FILES_FULLTEXTSEARCH_VERSION}/files_fulltextsearch-${FILES_FULLTEXTSEARCH_VERSION}.tar.gz" \
+    && echo "${FILES_FULLTEXTSEARCH_SHA256}  files_fulltextsearch.tar.gz" | sha256sum -c - \
+    && tar -xzf files_fulltextsearch.tar.gz && rm -f files_fulltextsearch.tar.gz \
+    && curl -fsSL -o fulltextsearch_elasticsearch.tar.gz "https://github.com/nextcloud-releases/fulltextsearch_elasticsearch/releases/download/${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}/fulltextsearch_elasticsearch-${FULLTEXTSEARCH_ELASTICSEARCH_VERSION}.tar.gz" \
+    && echo "${FULLTEXTSEARCH_ELASTICSEARCH_SHA256}  fulltextsearch_elasticsearch.tar.gz" | sha256sum -c - \
+    && tar -xzf fulltextsearch_elasticsearch.tar.gz && rm -f fulltextsearch_elasticsearch.tar.gz
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
 FROM nextcloud:30.0.17-apache
@@ -43,11 +58,13 @@ COPY config/storix-mpm.conf /etc/apache2/conf-available/storix-mpm.conf
 
 # Copy Nextcloud modular configurations
 COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
+COPY config/search.config.php /usr/src/nextcloud/config/search.config.php
 COPY config/nextcloud.config.php /usr/src/nextcloud/config/nextcloud.config.php
 # Copy Storix custom theme
 COPY themes/storix /usr/src/nextcloud/themes/storix/
 RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/img /var/www/html/core/img /var/www/html/themes/storix/core/img/tenants /usr/src/nextcloud/themes/storix/core/img/tenants \
     && cp /usr/src/nextcloud/config/ai.config.php /var/www/html/config/ai.config.php \
+    && cp /usr/src/nextcloud/config/search.config.php /var/www/html/config/search.config.php \
     && cp /usr/src/nextcloud/config/nextcloud.config.php /var/www/html/config/nextcloud.config.php \
     && cp -r /usr/src/nextcloud/themes/storix /var/www/html/themes/storix \
     && cp -r /usr/src/nextcloud/themes/storix/core/img/logo-white.png /usr/src/nextcloud/core/img/logo-header.png 2>/dev/null || : \
@@ -67,10 +84,14 @@ RUN mkdir -p /var/www/html/config /var/www/html/themes /usr/src/nextcloud/core/i
 # Copy entrypoint hooks and wrapper
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh
 COPY hooks/01-setup-ai.sh /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh
+COPY hooks/02-setup-opensearch.sh /docker-entrypoint-hooks.d/post-installation/02-setup-opensearch.sh
+COPY hooks/02-setup-opensearch.sh /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh
 COPY storix-entrypoint.sh /storix-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint-hooks.d/post-installation/01-setup-ai.sh \
     && chmod +x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh \
+    && chmod +x /docker-entrypoint-hooks.d/post-installation/02-setup-opensearch.sh \
+    && chmod +x /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh \
     && chmod +x /storix-entrypoint.sh \
     && a2enconf storix-mpm \
     && chown -R www-data:www-data /docker-entrypoint-hooks.d
