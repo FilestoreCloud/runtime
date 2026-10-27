@@ -77,10 +77,13 @@ $CONFIG = [
     // ISO 3166-1 alpha-2. Set to VN (Vietnam); change as needed.
     'default_phone_region' => 'VN',
 
-    // ── AI App Overwrite Allowlist ──────────────────────────────────────────
+    // ── Pre-baked Apps Overwrite Allowlist ──────────────────────────────────
     'app_install_overwrite' => [
         'assistant',
         'integration_openai',
+        'fulltextsearch',
+        'files_fulltextsearch',
+        'fulltextsearch_elasticsearch',
     ],
 
     // ── Multi-Directory Apps Configuration (Production Hardened) ────────────

@@ -187,6 +187,12 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
                 CURRENT_STEP="Setting AI provider key"
                 su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_key --value='${AI_KEY}'"
             fi
+            AI_MODEL="${AI_MODEL_NAME:-${OPENAI_MODEL:-}}"
+            if [ -n "${AI_MODEL}" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai model --value='${AI_MODEL}'" 2>/dev/null || :
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai chat_model --value='${AI_MODEL}'" 2>/dev/null || :
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai text_generation_model --value='${AI_MODEL}'" 2>/dev/null || :
+            fi
             CURRENT_STEP="Enabling AI text processing and assistant features"
             su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1"
             su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1"
