@@ -54,10 +54,18 @@ header.header-app {
 }
 
 #body-login .wrapper {
-    background: rgba(255, 255, 255, 0.98) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
-    padding: 32px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#body-login header,
+#body-login #header {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
 }
 
 #body-login .logo {
@@ -65,10 +73,16 @@ header.header-app {
     max-width: 240px !important;
     margin: 0 auto 16px auto !important;
     object-fit: contain !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 #body-login #header .logo {
-    max-height: 48px !important;
+    max-height: 64px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 /* Buttons and Primary Controls */
