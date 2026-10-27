@@ -29,7 +29,11 @@ echo "[OPENSEARCH-HOOK] 🔍 Configuring Nextcloud FullTextSearch for tenant '${
 # Verify Nextcloud is installed before invoking occ
 if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
     run_occ() {
-        su -s /bin/sh www-data -c "php /var/www/html/occ $*" 2>/dev/null || :
+        if [ "$(id -u)" = "0" ]; then
+            runuser -u www-data -- php /var/www/html/occ "$@" 2>/dev/null || :
+        else
+            php /var/www/html/occ "$@" 2>/dev/null || :
+        fi
     }
 
     echo "[OPENSEARCH-HOOK] 📦 Enabling FullTextSearch suite..."
