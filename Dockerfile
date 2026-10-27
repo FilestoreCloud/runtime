@@ -24,7 +24,7 @@ ENV FULLTEXTSEARCH_ELASTICSEARCH_VERSION="30.0.1"
 ENV FULLTEXTSEARCH_ELASTICSEARCH_SHA256="f366504f50e8a490ebc99fe9bee10943e785ec76fae22c88a92bda65cb8c8424"
 
 WORKDIR /apps
-# hadolint ignore=DL4006
+# hadolint ignore=DL4006,SC2016
 RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assistant/releases/download/${ASSISTANT_VERSION}/assistant-${ASSISTANT_VERSION}.tar.gz" \
     && echo "${ASSISTANT_SHA256}  assistant.tar.gz" | sha256sum -c - \
     && tar -xzf assistant.tar.gz && rm -f assistant.tar.gz \
