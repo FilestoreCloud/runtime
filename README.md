@@ -50,6 +50,8 @@ Production-hardened enterprise container runtime with pre-baked AI assistant, AW
 
 ## 1. Overview & Golden Image Baking Strategy
 
+![Storix Compute & Container Runtime Architecture](docs/images/zoom_block_2_compute_container.png)
+
 In a **Zero-NAT** cloud environment, containers cannot freely download external dependencies or apps from the internet at runtime without internet gateways or NAT. Downloading apps at container boot also significantly degrades container startup and scaling times.
 
 To solve this, this repository implements a **Golden Image Baking** strategy:
