@@ -10,6 +10,9 @@ fi
 
 # Ensure all application and configuration directories exist with correct permissions
 mkdir -p /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img
+if [ ! -f /var/www/html/data/.ncdata ]; then
+    echo "# Nextcloud data directory" > /var/www/html/data/.ncdata 2>/dev/null || :
+fi
 chown -R www-data:www-data /var/www/html/config /var/www/html/data /var/www/html/apps /var/www/html/custom_apps /var/www/html/themes /var/www/html/core/img 2>/dev/null || :
 chmod -R 775 /var/www/html/config /var/www/html/apps /var/www/html/custom_apps 2>/dev/null || :
 
@@ -70,9 +73,24 @@ if [ -f /var/www/html/config/config.php ]; then
     if [ -n "${POSTGRES_PASSWORD:-}" ]; then
         php -r '
             $pass = getenv("POSTGRES_PASSWORD");
+            $user = getenv("POSTGRES_USER") ?: "nextcloud";
+            $host = getenv("POSTGRES_HOST");
+            $ssl = getenv("PGSSLMODE") ?: "prefer";
             $file = "/var/www/html/config/config.php";
             if (file_exists($file) && !empty($pass)) {
                 $c = file_get_contents($file);
+                // Align password in PostgreSQL for any dedicated oc_* database user
+                if (preg_match("/\047dbuser\047\s*=>\s*\047([^\047]+)\047/", $c, $um)) {
+                    $curr_user = $um[1];
+                    if ($curr_user !== $user && !empty($host)) {
+                        try {
+                            $pdo = new PDO("pgsql:host=$host;dbname=postgres;sslmode=$ssl", $user, $pass, [PDO::ATTR_TIMEOUT => 5]);
+                            $q = $pdo->quote($pass);
+                            $pdo->exec("ALTER USER \"$curr_user\" WITH PASSWORD $q");
+                            echo "[STORIX] Aligned PostgreSQL user $curr_user password.\n";
+                        } catch (Exception $e) {}
+                    }
+                }
                 $pattern = "/(\047dbpassword\047\s*=>\s*\047)[^\047]*(\047)/";
                 if (preg_match($pattern, $c)) {
                     $escaped = addcslashes($pass, "\047\\");
@@ -222,6 +240,11 @@ fi
 if [ -n "${NEXTCLOUD_ADMIN_PASSWORD:-}" ] && [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
     ADMIN_USER="${NEXTCLOUD_ADMIN_USER:-admin}"
     OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" runuser -u www-data -- php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
+fi
+
+# Ensure .htaccess rewrite rules are active for clean URLs (preventing 404 on /login or /apps/files/)
+if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
+    runuser -u www-data -- php /var/www/html/occ maintenance:update:htaccess 2>/dev/null || :
 fi
 
 # Ensure CAN_INSTALL is permanently gone before handing off to entrypoint
