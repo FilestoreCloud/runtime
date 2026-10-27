@@ -247,6 +247,14 @@ if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/
     runuser -u www-data -- php /var/www/html/occ maintenance:update:htaccess 2>/dev/null || :
 fi
 
+# Trigger Storix AI & OpenSearch hooks directly with root privileges
+if [ -x /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh ]; then
+    /docker-entrypoint-hooks.d/before-starting/01-setup-ai.sh || :
+fi
+if [ -x /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh ]; then
+    /docker-entrypoint-hooks.d/before-starting/02-setup-opensearch.sh || :
+fi
+
 # Ensure CAN_INSTALL is permanently gone before handing off to entrypoint
 rm -f /var/www/html/config/CAN_INSTALL /usr/src/nextcloud/config/CAN_INSTALL 2>/dev/null || :
 
