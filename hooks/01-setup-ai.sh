@@ -198,6 +198,11 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
             CURRENT_STEP="Enabling AI text processing and assistant features"
             su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_text_processing --value=1"
             su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai enable_assistant --value=1"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai llm_provider_enabled --value=1" 2>/dev/null || :
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai chat_endpoint_enabled --value=1" 2>/dev/null || :
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai translation_provider_enabled --value=1" 2>/dev/null || :
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant assistant_enabled --value=1" 2>/dev/null || :
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set assistant free_prompt_picker_enabled --value=1" 2>/dev/null || :
         fi
 
         # Optional Redis Distributed Locking (if REDIS_HOST configured)

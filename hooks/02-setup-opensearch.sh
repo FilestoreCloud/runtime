@@ -36,9 +36,24 @@ if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/
         fi
     }
 
-    # Patch Elasticsearch client ProductCheckTrait for OpenSearch compatibility
+    # Patch Elasticsearch client and fulltextsearch for OpenSearch compatibility
     if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php ]; then
         sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php 2>/dev/null || :
+    fi
+    if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/EndpointTrait.php ]; then
+        sed -i 's/protected function buildCompatibilityHeaders(array \$headers) : array/protected function buildCompatibilityHeaders(array \$headers) : array { return \$headers; } protected function _orig_buildCompatibilityHeaders(array \$headers) : array/g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/EndpointTrait.php 2>/dev/null || :
+    fi
+    if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php ]; then
+        sed -i 's/max_analyzed_offset/max_analyzer_offset/g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php 2>/dev/null || :
+    fi
+    if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php ]; then
+        php -r '
+            $p = "/var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php";
+            $s = file_get_contents($p);
+            $s = str_replace("\x27mappings\x27 => [\n\t\t\t\t\x27standard\x27 => [", "\x27mappings\x27 => [", $s);
+            $s = str_replace("\t\t\t\t\t]\n\t\t\t\t]\n\t\t\t]\n\t\t];", "\t\t\t\t\t]\n\t\t\t]\n\t\t];", $s);
+            file_put_contents($p, $s);
+        ' 2>/dev/null || :
     fi
 
     echo "[OPENSEARCH-HOOK] 📦 Enabling FullTextSearch suite..."
