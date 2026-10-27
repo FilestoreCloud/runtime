@@ -239,7 +239,7 @@ fi
 # Ensure admin password is authenticated and up to date if supplied
 if [ -n "${NEXTCLOUD_ADMIN_PASSWORD:-}" ] && [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
     ADMIN_USER="${NEXTCLOUD_ADMIN_USER:-admin}"
-    OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" runuser -u www-data -- php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
+    runuser -u www-data -- env OC_PASS="$NEXTCLOUD_ADMIN_PASSWORD" php /var/www/html/occ user:resetpassword --password-from-env "$ADMIN_USER" 2>/dev/null || :
 fi
 
 # Ensure .htaccess rewrite rules are active for clean URLs (preventing 404 on /login or /apps/files/)
