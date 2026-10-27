@@ -182,6 +182,7 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
             AI_KEY="${AI_API_KEY:-${OPENAI_API_KEY:-}}"
             echo "[ENTRYPOINT-HOOK] Binding AI Provider to ${AI_ENDPOINT}..."
             CURRENT_STEP="Binding AI provider endpoint"
+            su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai url --value='${AI_ENDPOINT}'"
             su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai api_url --value='${AI_ENDPOINT}'"
             if [ -n "${AI_KEY}" ]; then
                 CURRENT_STEP="Setting AI provider key"
@@ -189,6 +190,7 @@ if su -s /bin/sh www-data -c "php /var/www/html/occ status" 2>/dev/null | grep -
             fi
             AI_MODEL="${AI_MODEL_NAME:-${OPENAI_MODEL:-}}"
             if [ -n "${AI_MODEL}" ]; then
+                su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai default_completion_model_id --value='${AI_MODEL}'" 2>/dev/null || :
                 su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai model --value='${AI_MODEL}'" 2>/dev/null || :
                 su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai chat_model --value='${AI_MODEL}'" 2>/dev/null || :
                 su -s /bin/sh www-data -c "php /var/www/html/occ config:app:set integration_openai text_generation_model --value='${AI_MODEL}'" 2>/dev/null || :

@@ -46,10 +46,18 @@ if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/
 
     echo "[OPENSEARCH-HOOK] ⚙️ Setting OpenSearch platform and index '${INDEX_NAME}'..."
     run_occ fulltextsearch:configure "{\"search_platform\":\"fulltextsearch_elasticsearch\"}" || :
-    run_occ fulltextsearch_elasticsearch:configure "{\"elastic_host\":[\"${OPENSEARCH_PROTO}://${SEARCH_HOST}:${OPENSEARCH_PORT}\"],\"elastic_index\":\"${INDEX_NAME}\"}" || :
+    run_occ fulltextsearch_elasticsearch:configure "{\"elastic_host\":\"${OPENSEARCH_PROTO}://${SEARCH_HOST}:${OPENSEARCH_PORT}\",\"elastic_index\":\"${INDEX_NAME}\"}" || :
+    run_occ config:app:set fulltextsearch search_platform --value="OCA\\FullTextSearch_Elasticsearch\\Platform\\ElasticSearchPlatform" || :
+    run_occ config:app:set fulltextsearch app_navigation --value="1" || :
+    run_occ config:app:set fulltextsearch enabled --value="yes" || :
+    run_occ config:app:set fulltextsearch_elasticsearch enabled --value="yes" || :
+    run_occ config:app:set fulltextsearch_elasticsearch elastic_host --value="${OPENSEARCH_PROTO}://${SEARCH_HOST}:${OPENSEARCH_PORT}" || :
+    run_occ config:app:set fulltextsearch_elasticsearch elastic_index --value="${INDEX_NAME}" || :
+    run_occ config:app:set fulltextsearch_elasticsearch analyzer_tokenizer --value="standard" || :
 
-    echo "[OPENSEARCH-HOOK] 📄 Setting Apache Tika extractor (${TIKA_HOST}:${TIKA_PORT})..."
-    run_occ files_fulltextsearch:configure "{\"files_tika_host\":\"${TIKA_HOST}\",\"files_tika_port\":${TIKA_PORT},\"files_pdf\":\"1\",\"files_office\":\"1\",\"files_image\":\"1\"}" || :
+    echo "[OPENSEARCH-HOOK] 📄 Setting files fulltextsearch options..."
+    run_occ config:app:set files_fulltextsearch enabled --value="yes" || :
+    run_occ files_fulltextsearch:configure "{\"files_local\":\"1\",\"files_pdf\":\"1\",\"files_office\":\"1\",\"files_image\":\"1\"}" || :
 
     # Touch initialization flag
     touch "${OPENSEARCH_FLAG}" 2>/dev/null || :
