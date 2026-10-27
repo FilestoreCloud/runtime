@@ -43,7 +43,8 @@ RUN curl -fsSL -o assistant.tar.gz "https://github.com/nextcloud-releases/assist
     && sed -i 's/throw new ProductCheckException/return; \/\/ throw new ProductCheckException/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/ProductCheckTrait.php \
     && sed -i 's/protected function buildCompatibilityHeaders(array \$headers) : array/protected function buildCompatibilityHeaders(array \$headers) : array { return \$headers; } protected function _orig_buildCompatibilityHeaders(array \$headers) : array/g' /apps/fulltextsearch_elasticsearch/lib/Vendor/Elastic/Elasticsearch/Traits/EndpointTrait.php \
     && sed -i 's/max_analyzed_offset/max_analyzer_offset/g' /apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php \
-    && python3 -c "p = '/apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php'; s = open(p).read(); s = s.replace(\"'mappings' => [\n\t\t\t\t'standard' => [\", \"'mappings' => [\"); s = s.replace(\"\t\t\t\t\t]\n\t\t\t\t]\n\t\t\t]\n\t\t];\", \"\t\t\t\t\t]\n\t\t\t]\n\t\t];\"); open(p, 'w').write(s)"
+    && sed -i 's/\.keyword//g' /apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php \
+    && python3 -c "p = '/apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php'; lines = open(p).read().splitlines(); del lines[240]; del lines[293]; open(p, 'w').write(chr(10).join(lines) + chr(10))"
 
 # ── Stage 2: Production Golden Image ───────────────────────────────────────────
 FROM nextcloud:30.0.17-apache

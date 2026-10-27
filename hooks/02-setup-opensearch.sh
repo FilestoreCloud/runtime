@@ -45,15 +45,10 @@ if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/
     fi
     if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php ]; then
         sed -i 's/max_analyzed_offset/max_analyzer_offset/g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php 2>/dev/null || :
+        sed -i 's/\.keyword//g' /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/SearchMappingService.php 2>/dev/null || :
     fi
     if [ -f /var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php ]; then
-        php -r '
-            $p = "/var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php";
-            $s = file_get_contents($p);
-            $s = str_replace("\x27mappings\x27 => [\n\t\t\t\t\x27standard\x27 => [", "\x27mappings\x27 => [", $s);
-            $s = str_replace("\t\t\t\t\t]\n\t\t\t\t]\n\t\t\t]\n\t\t];", "\t\t\t\t\t]\n\t\t\t]\n\t\t];", $s);
-            file_put_contents($p, $s);
-        ' 2>/dev/null || :
+        python3 -c "p = '/var/www/html/custom_apps/fulltextsearch_elasticsearch/lib/Service/IndexMappingService.php'; lines = open(p).read().splitlines(); del lines[240]; del lines[293]; open(p, 'w').write(chr(10).join(lines) + chr(10))" 2>/dev/null || :
     fi
 
     echo "[OPENSEARCH-HOOK] 📦 Enabling FullTextSearch suite..."
