@@ -245,6 +245,10 @@ fi
 # Ensure .htaccess rewrite rules are active for clean URLs (preventing 404 on /login or /apps/files/)
 if [ -f /var/www/html/config/config.php ] && grep -q "'installed' => true" /var/www/html/config/config.php; then
     runuser -u www-data -- php /var/www/html/occ maintenance:update:htaccess 2>/dev/null || :
+    # Enforce HTTPS destination in .htaccess rewrite rules to prevent insecure redirects behind TLS-terminating proxies (breaking mobile sync/ATS)
+    if [ -f /var/www/html/.htaccess ]; then
+        sed -i 's|/remote.php/dav/ \[R=301,L\]|https://%{HTTP_HOST}/remote.php/dav/ [R=301,L]|g' /var/www/html/.htaccess 2>/dev/null || :
+    fi
 fi
 
 # Trigger Storix AI & OpenSearch hooks directly with root privileges

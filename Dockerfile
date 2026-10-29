@@ -60,6 +60,7 @@ COPY --from=builder --chown=www-data:www-data /apps /usr/src/nextcloud/custom_ap
 # Copy OPcache & PHP optimizations
 COPY config/opcache.ini /usr/local/etc/php/conf.d/opcache-recommended.ini
 COPY config/storix-mpm.conf /etc/apache2/conf-available/storix-mpm.conf
+COPY config/remoteip.conf /etc/apache2/conf-available/remoteip.conf
 
 # Copy Nextcloud modular configurations
 COPY config/ai.config.php /usr/src/nextcloud/config/ai.config.php
