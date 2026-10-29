@@ -19,6 +19,7 @@ $CONFIG = [
     // 'overwriteprotocol' => 'https' (Default production setting; supports dynamic OVERWRITEPROTOCOL override)
     'overwriteprotocol' => (getenv('OVERWRITEPROTOCOL') !== false && getenv('OVERWRITEPROTOCOL') !== '') ? getenv('OVERWRITEPROTOCOL') : 'https',
     'overwrite.cli.url' => (getenv('OVERWRITECLIURL') !== false && getenv('OVERWRITECLIURL') !== '') ? getenv('OVERWRITECLIURL') : 'http://localhost',
+    'overwritehost'     => (getenv('OVERWRITEHOST') !== false && getenv('OVERWRITEHOST') !== '') ? getenv('OVERWRITEHOST') : '',
 
     // ── Default Theme & White-Label ─────────────────────────────────────────
     'theme'             => 'storix',
@@ -45,14 +46,21 @@ $CONFIG = [
     ],
     'trusted_proxies'   => [
         ...(function () {
+            $defaultProxies = [
+                '10.0.0.0/16', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.1',
+                '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+                '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+                '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+                '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22'
+            ];
             $raw = getenv('TRUSTED_PROXIES');
             if ($raw !== false && trim($raw) !== '') {
                 $proxies = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', trim($raw)))));
                 if (!empty($proxies)) {
-                    return $proxies;
+                    return array_values(array_unique(array_merge($defaultProxies, $proxies)));
                 }
             }
-            return ['10.0.0.0/16'];
+            return $defaultProxies;
         })(),
     ],
     'forwarded_for_headers' => ['HTTP_X_FORWARDED_FOR'],
